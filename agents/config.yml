@@ -1,0 +1,18 @@
+# Active agent type: "react", "workflow", or "multi"
+# Switch agents by changing this single value — no code changes needed.
+active: workflow
+
+# Default resume_data per agent type.
+# Used when confirming an interrupted action via POST /api/actions/confirm.
+# Each agent passes this directly to Command(resume=...), so the format here
+# must match the agent's underlying resume mechanism.
+#
+# react:    HumanInTheLoopMiddleware expects {"decisions": [Decision, ...]}
+#           Decision types: approve / edit / reject / respond
+# workflow: LangGraph interrupt() expects the raw resume value directly
+resume_data:
+  react:
+    decisions:
+      - type: approve
+  workflow:
+    confirmed: true

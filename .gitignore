@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment variables (IMPORTANT: Never commit!)
+.env
+.env.local
+.env.*.local
+
+# Data and databases (local storage)
+data/
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# MCP config (user-specific)
+mcp_servers.yml
+
+# Frontend
+frontend/my-react-app/node_modules/
+frontend/my-react-app/dist/
+frontend/my-react-app/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Trae internal
+.trae/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/

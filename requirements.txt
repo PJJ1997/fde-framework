@@ -1,0 +1,11 @@
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+langchain-core>=0.1.0
+langchain-openai>=0.0.5
+langgraph>=0.0.1
+pyyaml>=6.0
+python-dotenv>=1.0.0
+langsmith>=0.1.0
+langchain-text-splitters>=0.0.1
+langchain-chroma>=0.1.0
+chromadb>=0.4.0
