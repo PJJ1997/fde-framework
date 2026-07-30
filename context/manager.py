@@ -10,7 +10,7 @@ from langchain_core.messages import (
 
 from .models import Message
 from .sqlite import SQLiteManager
-from .structured import StructuredConversationContext
+from .structured import StructuredConversationContext, ToolFact
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +158,38 @@ class ContextManager:
             schema_version=validated.schema_version,
             last_message_id=last_message_id,
         )
+
+    def record_tool_facts(
+        self,
+        session_id: str,
+        step_results: list,
+    ) -> Optional[StructuredConversationContext]:
+        """Persist compact facts from successful tool executions."""
+        context = self.get_structured_context(session_id)
+        if context is None:
+            return None
+
+        new_facts = [
+            ToolFact(
+                tool=step.tool_name,
+                data=step.result,
+            )
+            for step in step_results
+            if step.success
+        ]
+        if not new_facts:
+            return context
+
+        updated = context.model_copy(
+            update={
+                "tool_facts": [
+                    *context.tool_facts,
+                    *new_facts,
+                ][-20:]
+            }
+        )
+        self.save_structured_context(session_id, updated)
+        return updated
 
     def get_session_history(self, session_id: str, limit: Optional[int] = None) -> List[Message]:
         """Get all messages for a session."""

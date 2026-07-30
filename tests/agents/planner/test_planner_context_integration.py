@@ -1,11 +1,13 @@
 import json
 import unittest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from langgraph.checkpoint.memory import MemorySaver
 
+from agents.planner.nodes.executor_node import ExecutorNode
 from agents.planner.nodes.planner_node import PlannerNode
 from agents.planner.planner_agent import PlannerAgent
+from agents.planner.schemas import PlanStep, PlannerResult
 from context.structured import StructuredConversationContext
 
 
@@ -44,6 +46,44 @@ class PlannerContextIntegrationTests(unittest.TestCase):
         self.assertIn(("context_builder", "planner"), edges)
         self.assertNotIn(("reviewer", "context_builder"), edges)
         self.assertIn(("reviewer", "planner"), edges)
+
+    def test_executor_persists_tool_facts_without_llm(self):
+        tool = Mock()
+        tool_executor = Mock()
+        tool_executor.execute = AsyncMock(return_value={
+            "order": {"order_id": "ORD-1001", "price": 80},
+            "message": "updated",
+        })
+        manager = Mock()
+        node = ExecutorNode(
+            {"update_order": tool},
+            context_manager_instance=manager,
+            tool_executor=tool_executor,
+        )
+        state = {
+            "session_id": "session-1",
+            "planner_result": PlannerResult(
+                decision="execute",
+                goal="修改订单价格",
+                steps=[
+                    PlanStep(
+                        step_id="step_1",
+                        description="修改价格",
+                        tool_name="update_order",
+                        arguments={"order_id": "ORD-1001", "price": 80},
+                        expected_result="价格修改成功",
+                    )
+                ],
+            ),
+        }
+
+        result = node(state)
+
+        self.assertTrue(result["step_results"][0].success)
+        tool_executor.execute.assert_awaited_once()
+        manager.record_tool_facts.assert_called_once_with(
+            "session-1", result["step_results"]
+        )
 
 
 if __name__ == "__main__":

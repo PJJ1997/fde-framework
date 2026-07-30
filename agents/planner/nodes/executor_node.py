@@ -1,11 +1,13 @@
 """Executor node for executing planned steps."""
+import asyncio
 import json
 import logging
 from typing import Dict
 
 from langchain_core.tools import StructuredTool
 
-from tools.executor import executor
+from context.manager import ContextManager, context_manager
+from tools.executor import ToolExecutor, executor
 from ..schemas import PlannerState, StepResult, ReviewDecision
 
 logger = logging.getLogger(__name__)
@@ -14,8 +16,15 @@ logger = logging.getLogger(__name__)
 class ExecutorNode:
     """Executor node: Execute all steps in the plan sequentially."""
     
-    def __init__(self, tools: Dict[str, StructuredTool]):
+    def __init__(
+        self,
+        tools: Dict[str, StructuredTool],
+        context_manager_instance: ContextManager = context_manager,
+        tool_executor: ToolExecutor = executor,
+    ):
         self.tools = tools
+        self.context_manager = context_manager_instance
+        self.tool_executor = tool_executor
     
     def __call__(self, state: PlannerState) -> dict:
         """Execute all steps in the plan sequentially."""
@@ -49,10 +58,12 @@ class ExecutorNode:
             
             try:
                 # Execute tool
-                result = executor.execute_tool(
-                    tool=tool,
-                    args=step.arguments,
-                    session_id=session_id
+                result = asyncio.run(
+                    self.tool_executor.execute(
+                        tool,
+                        step.arguments,
+                        context={"session_id": session_id},
+                    )
                 )
                 
                 # Extract user-friendly message
@@ -87,6 +98,10 @@ class ExecutorNode:
         result = {
             "step_results": step_results,
         }
+        self.context_manager.record_tool_facts(
+            session_id,
+            step_results,
+        )
         
         # Log executor output
         logger.info("=" * 80)

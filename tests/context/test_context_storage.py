@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from agents.planner.schemas import StepResult
 from context.manager import ContextManager
 from context.structured import StructuredConversationContext
 
@@ -62,6 +63,40 @@ class ContextStorageTests(unittest.TestCase):
         )
         self.assertEqual(
             self.manager.get_session_history("session-1"), []
+        )
+
+    def test_record_tool_facts_keeps_only_successful_results(self):
+        self.manager.save_structured_context(
+            "session-1", StructuredConversationContext()
+        )
+
+        updated = self.manager.record_tool_facts("session-1", [
+            StepResult(
+                step_id="step_1",
+                tool_name="update_order",
+                success=True,
+                result={
+                    "order": {
+                        "order_id": "ORD-1001",
+                        "price": 80,
+                    }
+                },
+                message="updated",
+            ),
+            StepResult(
+                step_id="step_2",
+                tool_name="missing_tool",
+                success=False,
+                result={"error": "failed"},
+                message="failed",
+            ),
+        ])
+
+        self.assertIsNotNone(updated)
+        self.assertEqual(len(updated.tool_facts), 1)
+        self.assertEqual(updated.tool_facts[0].tool, "update_order")
+        self.assertEqual(
+            updated.tool_facts[0].data["order"]["price"], 80
         )
 
 
