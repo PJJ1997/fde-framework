@@ -202,7 +202,10 @@ class SQLiteManager:
                     context_json = excluded.context_json,
                     schema_version = excluded.schema_version,
                     context_version = conversation_contexts.context_version + 1,
-                    last_message_id = excluded.last_message_id,
+                    last_message_id = COALESCE(
+                        excluded.last_message_id,
+                        conversation_contexts.last_message_id
+                    ),
                     updated_at = CURRENT_TIMESTAMP
                 """,
                 (

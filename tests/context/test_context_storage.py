@@ -67,7 +67,9 @@ class ContextStorageTests(unittest.TestCase):
 
     def test_record_tool_facts_keeps_only_successful_results(self):
         self.manager.save_structured_context(
-            "session-1", StructuredConversationContext()
+            "session-1",
+            StructuredConversationContext(),
+            last_message_id=11,
         )
 
         updated = self.manager.record_tool_facts("session-1", [
@@ -98,6 +100,8 @@ class ContextStorageTests(unittest.TestCase):
         self.assertEqual(
             updated.tool_facts[0].data["order"]["price"], 80
         )
+        stored = self.manager.db.get_conversation_context("session-1")
+        self.assertEqual(stored["last_message_id"], 11)
 
 
 if __name__ == "__main__":
