@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Literal, Optional, TypedDict
 
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
+from context.structured import StructuredConversationContext
 
 
 class PlannerDecision(str, Enum):
@@ -87,6 +88,7 @@ class PlannerState(TypedDict, total=False):
     session_id: str
     messages: List[BaseMessage]
     user_goal: str  # What the user wants to accomplish
+    structured_context: Optional[StructuredConversationContext]
 
     # Planning decision
     planner_decision: Optional[str]  # execute, need_input, reject
