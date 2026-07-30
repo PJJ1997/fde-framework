@@ -1,0 +1,73 @@
+"""Schemas for Planner-Executor-Reviewer architecture."""
+from enum import Enum
+from typing import Any, Dict, List, Optional, TypedDict
+
+from pydantic import BaseModel, Field
+from langchain_core.messages import BaseMessage
+
+
+class ReviewDecision(str, Enum):
+    """Review decision enum."""
+    PASS = "PASS"
+    REPLAN = "REPLAN"
+    FAIL = "FAIL"
+
+
+class PlanStep(BaseModel):
+    """Single step in an execution plan."""
+    step_id: str = Field(description="Unique step identifier, e.g., 'step_1'")
+    description: str = Field(description="Human-readable description of what this step does")
+    tool_name: str = Field(description="Name of the tool to call")
+    arguments: Dict[str, Any] = Field(default_factory=dict, description="Tool arguments as key-value pairs")
+    expected_result: str = Field(description="Expected outcome of this step")
+
+
+class ExecutionPlan(BaseModel):
+    """Structured execution plan from Planner."""
+    goal: str = Field(description="Overall goal to accomplish")
+    steps: List[PlanStep] = Field(description="Ordered list of steps to execute")
+
+
+class StepResult(BaseModel):
+    """Result from executing a single step."""
+    step_id: str = Field(description="Step identifier")
+    tool_name: str = Field(description="Tool that was called")
+    success: bool = Field(description="Whether execution succeeded")
+    result: Dict[str, Any] = Field(default_factory=dict, description="Tool output or error")
+    message: str = Field(description="Human-readable result message")
+
+
+class PlannerState(TypedDict, total=False):
+    """State for Planner-Executor-Reviewer workflow.
+    
+    Tracks everything needed for the multi-agent loop:
+    - What the user wants to do
+    - Current plan
+    - Execution progress
+    - Results from each step
+    - Reviewer feedback
+    - Loop counter for max retries
+    """
+    # User input
+    session_id: str
+    messages: List[BaseMessage]
+    user_goal: str  # What the user wants to accomplish
+    
+    # Planning
+    plan: Optional[ExecutionPlan]  # Current execution plan
+    plan_json: Optional[str]  # JSON serialization for LLM consumption
+    
+    # Execution tracking
+    current_step_index: int  # Which step we're executing (0-based)
+    step_results: List[StepResult]  # Results from all executed steps
+    
+    # Review
+    review_decision: Optional[ReviewDecision]  # PASS, REPLAN, or FAIL
+    review_feedback: Optional[str]  # Why reviewer made this decision
+    
+    # Loop control
+    iteration_count: int  # How many Planner -> Executor -> Reviewer cycles
+    max_iterations: int  # Safety limit to prevent infinite loops
+    
+    # Final output
+    final_content: Optional[str]  # Final message to user

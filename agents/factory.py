@@ -9,6 +9,7 @@ from langchain_core.tools import StructuredTool
 from agents.base import BaseAgent
 from agents.react.react import ReActAgent
 from agents.workflow.workflow import WorkflowAgent
+from agents.planner.planner_agent import PlannerAgent
 
 def _load_config() -> dict:
     """Load agent config from config.yml (read each time so changes take
@@ -29,7 +30,7 @@ def create_agent(
         llm: LangChain LLM instance
         tools: List of LangChain StructuredTool (required for react and multi)
         agent_type: Agent type override. If None, uses the "active" value
-            from agents/config.yml. Supported: "react", "workflow".
+            from agents/config.yml. Supported: "react", "workflow", "planner".
 
     Returns:
         BaseAgent instance
@@ -43,7 +44,10 @@ def create_agent(
     if agent_type == "workflow":
         return WorkflowAgent(llm)
 
-    raise ValueError(f"Unknown agent type: {agent_type}. Supported: 'react', 'workflow', 'multi'")
+    if agent_type == "planner":
+        return PlannerAgent(llm)
+
+    raise ValueError(f"Unknown agent type: {agent_type}. Supported: 'react', 'workflow', 'planner'")
 
 
 def get_resume_data(agent_type: Optional[str] = None) -> dict:

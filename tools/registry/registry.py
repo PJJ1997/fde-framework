@@ -1,14 +1,11 @@
 """Simple tool registry."""
 import asyncio
 import logging
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import Dict, List, Optional
 
 from langchain_core.tools import StructuredTool
 
 from ..executor import executor as _executor, ToolExecutor
-
-if TYPE_CHECKING:
-    from ..mcp import MCPClient, MCPManager, MCPToolWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -115,54 +112,6 @@ class ToolRegistry:
             ]
 
         return tools
-
-    def register_from_mcp(
-        self,
-        mcp_client: "MCPClient",
-        permissions: Optional[Dict[str, str]] = None,
-    ) -> int:
-        """Register tools from an MCP server.
-
-        Tools are discovered via MCP list_tools and wrapped as StructuredTools.
-        Permissions from config are applied to each tool.
-
-        Args:
-            mcp_client: MCPClient instance (must be started)
-            permissions: Dict mapping tool_name → permission string
-
-        Returns:
-            Number of tools registered
-        """
-        try:
-            wrapped_tools = mcp_client.wrap_tools(permissions)
-            for tool in wrapped_tools:
-                # MCPToolWrapper already has permission in metadata
-                self._tools[tool.name] = tool
-                logger.info(f"Registered MCP tool: {tool.name} from '{mcp_client.server_name}'")
-            return len(wrapped_tools)
-        except Exception as e:
-            logger.error(f"Failed to register MCP tools from '{mcp_client.server_name}': {e}")
-            return 0
-
-    def register_from_mcp_manager(
-        self,
-        mcp_manager: "MCPManager",
-        permissions: Optional[Dict[str, Dict[str, str]]] = None,
-    ) -> int:
-        """Register tools from all MCP servers managed by MCPManager.
-
-        Args:
-            mcp_manager: MCPManager instance (must be started)
-            permissions: Dict mapping server_name → {tool_name → permission}
-
-        Returns:
-            Total number of tools registered
-        """
-        total = 0
-        for server_name, client in mcp_manager.clients.items():
-            perms = (permissions or {}).get(server_name, {})
-            total += self.register_from_mcp(client, perms)
-        return total
 
 
 # Global registry instance
