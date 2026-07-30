@@ -9,7 +9,6 @@ from langchain_core.tools import StructuredTool
 from agents.base import BaseAgent
 from agents.react.react import ReActAgent
 from agents.workflow.workflow import WorkflowAgent
-from agents.multi_agent.multi_agent import MultiAgent
 
 def _load_config() -> dict:
     """Load agent config from config.yml (read each time so changes take
@@ -30,7 +29,7 @@ def create_agent(
         llm: LangChain LLM instance
         tools: List of LangChain StructuredTool (required for react and multi)
         agent_type: Agent type override. If None, uses the "active" value
-            from agents/config.yml. Supported: "react", "workflow", "multi".
+            from agents/config.yml. Supported: "react", "workflow".
 
     Returns:
         BaseAgent instance
@@ -43,9 +42,6 @@ def create_agent(
 
     if agent_type == "workflow":
         return WorkflowAgent(llm)
-
-    if agent_type == "multi":
-        return MultiAgent(llm, tools or [])
 
     raise ValueError(f"Unknown agent type: {agent_type}. Supported: 'react', 'workflow', 'multi'")
 
