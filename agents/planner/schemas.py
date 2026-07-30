@@ -20,6 +20,16 @@ class ReviewDecision(str, Enum):
     FAIL = "FAIL"
 
 
+class ReviewResult(BaseModel):
+    """Structured review result from Reviewer."""
+    decision: Literal["PASS", "REPLAN", "FAIL"] = Field(
+        description="Review decision: PASS (成功), REPLAN (重新规划), FAIL (失败)"
+    )
+    feedback: str = Field(
+        description="Detailed feedback explaining the decision"
+    )
+
+
 class PlanStep(BaseModel):
     """Single step in an execution plan."""
     step_id: str = Field(description="Unique step identifier, e.g., 'step_1'")

@@ -23,7 +23,7 @@ from langgraph.graph import StateGraph, START, END
 from agents.base import BaseAgent, AgentInput, AgentResult
 from context import context_manager
 from tools.registry import registry
-from .nodes import PlannerNodes
+from .nodes import PlannerNode, ExecutorNode, ReviewerNode, route_after_planner, route_after_reviewer
 from .schemas import PlannerState, ReviewDecision
 
 
@@ -68,12 +68,15 @@ class PlannerAgent(BaseAgent):
 
     def _build_graph(self):
         """Build the Planner-Executor-Reviewer graph."""
-        nodes = PlannerNodes(self.llm, self._tools)
+        # Create node instances
+        planner_node = PlannerNode(self.llm, self._tools)
+        executor_node = ExecutorNode(self._tools)
+        reviewer_node = ReviewerNode(self.llm)
 
         graph = StateGraph(PlannerState)
-        graph.add_node("planner", nodes.planner)
-        graph.add_node("executor", nodes.executor)
-        graph.add_node("reviewer", nodes.reviewer)
+        graph.add_node("planner", planner_node)
+        graph.add_node("executor", executor_node)
+        graph.add_node("reviewer", reviewer_node)
 
         # Edges
         graph.add_edge(START, "planner")
@@ -81,7 +84,7 @@ class PlannerAgent(BaseAgent):
         # Conditional edge from planner: execute → executor, need_input/reject → END
         graph.add_conditional_edges(
             "planner",
-            PlannerNodes.route_after_planner,
+            route_after_planner,
             {
                 "executor": "executor",  # decision=execute
                 "end": END,               # decision=need_input or reject
@@ -93,7 +96,7 @@ class PlannerAgent(BaseAgent):
         # Conditional edge from reviewer
         graph.add_conditional_edges(
             "reviewer",
-            PlannerNodes.should_continue,
+            route_after_reviewer,
             {
                 "planner": "planner",  # REPLAN
                 "end": END,            # PASS or FAIL
