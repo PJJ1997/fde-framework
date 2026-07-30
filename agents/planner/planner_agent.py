@@ -23,7 +23,14 @@ from langgraph.graph import StateGraph, START, END
 from agents.base import BaseAgent, AgentInput, AgentResult
 from context import context_manager
 from tools.registry import registry
-from .nodes import PlannerNode, ExecutorNode, ReviewerNode, route_after_planner, route_after_reviewer
+from .nodes import (
+    ContextBuilderNode,
+    ExecutorNode,
+    PlannerNode,
+    ReviewerNode,
+    route_after_planner,
+    route_after_reviewer,
+)
 from .schemas import PlannerState, ReviewDecision
 
 
@@ -69,17 +76,20 @@ class PlannerAgent(BaseAgent):
     def _build_graph(self):
         """Build the Planner-Executor-Reviewer graph."""
         # Create node instances
+        context_builder_node = ContextBuilderNode(self.llm)
         planner_node = PlannerNode(self.llm, self._tools)
         executor_node = ExecutorNode(self._tools)
         reviewer_node = ReviewerNode(self.llm)
 
         graph = StateGraph(PlannerState)
+        graph.add_node("context_builder", context_builder_node)
         graph.add_node("planner", planner_node)
         graph.add_node("executor", executor_node)
         graph.add_node("reviewer", reviewer_node)
 
         # Edges
-        graph.add_edge(START, "planner")
+        graph.add_edge(START, "context_builder")
+        graph.add_edge("context_builder", "planner")
 
         # Conditional edge from planner: execute → executor, need_input/reject → END
         graph.add_conditional_edges(
@@ -124,6 +134,7 @@ class PlannerAgent(BaseAgent):
             "session_id": session_id,
             "messages": input.messages,  # Pass all messages for context
             "user_goal": user_goal,
+            "structured_context": None,
             "planner_decision": None,
             "planner_result": None,
             "plan_json": None,

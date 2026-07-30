@@ -7,8 +7,9 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 
+from context.structured import StructuredConversationContext
 from ..schemas import PlannerState, PlannerResult
-from .utils import build_tools_description, build_conversation_context, clean_json_response
+from .utils import build_tools_description, clean_json_response
 
 logger = logging.getLogger(__name__)
 
@@ -69,20 +70,23 @@ class PlannerNode:
 只输出JSON,不要其他解释。
 """
     
-    def _build_user_message(self, user_goal: str, conversation_context: str, 
-                           iteration: int, review_feedback: str = "") -> str:
-        """Build user message for planner."""
-        if iteration == 0:
-            return f"{conversation_context}\n当前用户目标: {user_goal}\n\n请生成执行计划。"
-        else:
-            return f"""{conversation_context}
-
-当前用户目标: {user_goal}
-
-上一次计划执行后的反馈:
-{review_feedback}
-
-请根据反馈重新生成执行计划。"""
+    def _build_user_message(
+        self,
+        user_goal: str,
+        conversation_context: StructuredConversationContext,
+        iteration: int,
+        review_feedback: str = "",
+    ) -> str:
+        """Build a stable JSON input envelope for the Planner."""
+        return json.dumps(
+            {
+                "context": conversation_context.model_dump(mode="json"),
+                "current_user_goal": user_goal,
+                "iteration": iteration,
+                "review_feedback": review_feedback or None,
+            },
+            ensure_ascii=False,
+        )
     
     def _call_llm_with_fallback(self, messages: list) -> tuple[PlannerResult, str]:
         """Call LLM with structured output, fallback to JSON parsing if needed.
@@ -198,7 +202,12 @@ class PlannerNode:
         try:
             # Build prompts
             tools_text = build_tools_description(self.tools)
-            conversation_context = build_conversation_context(session_id)
+            stored_context = state.get("structured_context")
+            conversation_context = (
+                StructuredConversationContext.model_validate(stored_context)
+                if stored_context is not None
+                else StructuredConversationContext.empty()
+            )
             system_prompt = self._build_system_prompt(tools_text)
             user_message = self._build_user_message(
                 user_goal, conversation_context, iteration, review_feedback

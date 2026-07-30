@@ -4,7 +4,6 @@ import logging
 from typing import Dict
 
 from langchain_core.tools import StructuredTool
-from context import context_manager
 
 logger = logging.getLogger(__name__)
 
@@ -35,33 +34,6 @@ def build_tools_description(tools: Dict[str, StructuredTool]) -> str:
         tool_descriptions.append(desc)
 
     return "\n".join(tool_descriptions)
-
-
-def build_conversation_context(session_id: str, max_messages: int = 10) -> str:
-    """Build conversation history context from context_manager."""
-    if not session_id:
-        return ""
-    
-    conversations = context_manager.get_conversations(session_id)
-    if not conversations or len(conversations) == 0:
-        return ""
-    
-    # Get recent conversations for context
-    recent_convs = conversations[-max_messages:] if len(conversations) > max_messages else conversations
-    conv_lines = []
-    
-    for conv in recent_convs:
-        role = conv.get("role", "user")
-        content = conv.get("content", "")
-        role_name = "用户" if role == "user" else "助手"
-        # Limit content length to avoid token overflow
-        content_preview = content[:200] if len(content) > 200 else content
-        conv_lines.append(f"{role_name}: {content_preview}")
-    
-    if conv_lines:
-        return "\n最近对话:\n" + "\n".join(conv_lines) + "\n"
-    
-    return ""
 
 
 def clean_json_response(response_text: str) -> str:
