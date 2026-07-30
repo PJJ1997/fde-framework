@@ -1,0 +1,69 @@
+import sqlite3
+import tempfile
+import unittest
+from pathlib import Path
+
+from context.manager import ContextManager
+from context.structured import StructuredConversationContext
+
+
+class ContextStorageTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = str(Path(self.temp_dir.name) / "chat.db")
+        self.manager = ContextManager(self.db_path)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_save_load_and_version_increment(self):
+        first = StructuredConversationContext(summary="first")
+        self.assertEqual(
+            self.manager.save_structured_context("session-1", first, 4),
+            1,
+        )
+
+        second = first.model_copy(update={"summary": "second"})
+        self.assertEqual(
+            self.manager.save_structured_context("session-1", second, 5),
+            2,
+        )
+
+        restored = self.manager.get_structured_context("session-1")
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.summary, "second")
+
+    def test_invalid_stored_json_is_treated_as_missing(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO conversation_contexts (
+                    session_id, context_json, schema_version,
+                    context_version, last_message_id
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                ("session-1", "{invalid", "1.0", 1, None),
+            )
+
+        self.assertIsNone(
+            self.manager.get_structured_context("session-1")
+        )
+
+    def test_clear_session_removes_messages_and_context(self):
+        self.manager.save_user_message("session-1", "hello")
+        self.manager.save_structured_context(
+            "session-1", StructuredConversationContext()
+        )
+
+        self.manager.clear_session("session-1")
+
+        self.assertIsNone(
+            self.manager.get_structured_context("session-1")
+        )
+        self.assertEqual(
+            self.manager.get_session_history("session-1"), []
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

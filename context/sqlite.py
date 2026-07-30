@@ -1,7 +1,7 @@
 """SQLite database operations for messages."""
 import sqlite3
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 
 from .models import Message
@@ -40,6 +40,17 @@ class SQLiteManager:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_session_id
             ON messages(session_id)
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_contexts (
+                session_id TEXT PRIMARY KEY,
+                context_json TEXT NOT NULL,
+                schema_version TEXT NOT NULL DEFAULT '1.0',
+                context_version INTEGER NOT NULL DEFAULT 1,
+                last_message_id INTEGER,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
         """)
 
         conn.commit()
@@ -142,6 +153,87 @@ class SQLiteManager:
         conn.close()
 
         return deleted_count
+
+    def get_conversation_context(
+        self,
+        session_id: str,
+    ) -> Optional[Dict]:
+        """Get the latest structured context snapshot for a session."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                SELECT session_id, context_json, schema_version,
+                       context_version, last_message_id, updated_at
+                FROM conversation_contexts
+                WHERE session_id = ?
+                """,
+                (session_id,),
+            )
+            row = cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return {
+            "session_id": row[0],
+            "context_json": row[1],
+            "schema_version": row[2],
+            "context_version": row[3],
+            "last_message_id": row[4],
+            "updated_at": row[5],
+        }
+
+    def save_conversation_context(
+        self,
+        session_id: str,
+        context_json: str,
+        schema_version: str,
+        last_message_id: Optional[int] = None,
+    ) -> int:
+        """Upsert a structured context snapshot and return its version."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO conversation_contexts (
+                    session_id, context_json, schema_version,
+                    context_version, last_message_id, updated_at
+                ) VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    context_json = excluded.context_json,
+                    schema_version = excluded.schema_version,
+                    context_version = conversation_contexts.context_version + 1,
+                    last_message_id = excluded.last_message_id,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    session_id,
+                    context_json,
+                    schema_version,
+                    last_message_id,
+                ),
+            )
+            row = conn.execute(
+                """
+                SELECT context_version
+                FROM conversation_contexts
+                WHERE session_id = ?
+                """,
+                (session_id,),
+            ).fetchone()
+
+        return int(row[0])
+
+    def delete_conversation_context(self, session_id: str) -> int:
+        """Delete the structured context snapshot for a session."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM conversation_contexts
+                WHERE session_id = ?
+                """,
+                (session_id,),
+            )
+            return cursor.rowcount
 
     def get_all_sessions(self) -> List[str]:
         """Get all unique session IDs.

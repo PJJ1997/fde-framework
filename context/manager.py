@@ -1,5 +1,6 @@
 """Context manager for building complete agent context."""
 import json
+import logging
 from typing import Dict, List, Optional
 from datetime import datetime
 
@@ -9,6 +10,9 @@ from langchain_core.messages import (
 
 from .models import Message
 from .sqlite import SQLiteManager
+from .structured import StructuredConversationContext
+
+logger = logging.getLogger(__name__)
 
 # LangChain message type -> class mapping
 _MESSAGE_TYPES = {
@@ -115,7 +119,45 @@ class ContextManager:
 
     def clear_session(self, session_id: str) -> int:
         """Clear all messages for a session."""
-        return self.db.delete_messages_by_session(session_id)
+        deleted_messages = self.db.delete_messages_by_session(session_id)
+        self.db.delete_conversation_context(session_id)
+        return deleted_messages
+
+    def get_structured_context(
+        self,
+        session_id: str,
+    ) -> Optional[StructuredConversationContext]:
+        """Load and validate the latest structured context snapshot."""
+        stored = self.db.get_conversation_context(session_id)
+        if stored is None:
+            return None
+
+        try:
+            return StructuredConversationContext.model_validate_json(
+                stored["context_json"]
+            )
+        except Exception as error:
+            logger.warning(
+                "Invalid structured context for session %s: %s",
+                session_id,
+                error,
+            )
+            return None
+
+    def save_structured_context(
+        self,
+        session_id: str,
+        context: StructuredConversationContext,
+        last_message_id: Optional[int] = None,
+    ) -> int:
+        """Validate and persist a complete structured context snapshot."""
+        validated = StructuredConversationContext.model_validate(context)
+        return self.db.save_conversation_context(
+            session_id=session_id,
+            context_json=validated.model_dump_json(),
+            schema_version=validated.schema_version,
+            last_message_id=last_message_id,
+        )
 
     def get_session_history(self, session_id: str, limit: Optional[int] = None) -> List[Message]:
         """Get all messages for a session."""
