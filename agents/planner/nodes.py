@@ -1,6 +1,7 @@
 """Node functions for Planner-Executor-Reviewer architecture."""
 import asyncio
 import json
+import logging
 from typing import Dict
 
 from langchain_core.language_models import BaseChatModel
@@ -10,11 +11,14 @@ from langchain_core.tools import StructuredTool
 from tools.executor import executor
 from context import context_manager
 from .schemas import (
-    ExecutionPlan,
     PlannerState,
+    PlannerDecision,
+    PlannerResult,
     ReviewDecision,
     StepResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class PlannerNodes:
@@ -63,42 +67,50 @@ class PlannerNodes:
 
         tools_text = "\n".join(tool_descriptions)
         
-        # System prompt
-        system_prompt = f"""你是一个智能规划助手。根据用户目标和可用工具,生成结构化的执行计划。
+        # System prompt with new decision logic
+        system_prompt = f"""你是一个智能规划助手。根据用户目标和可用工具,判断是否可以执行任务。
 
 可用工具:
 {tools_text}
 
-输出格式(严格JSON):
+输出格式(严格JSON,包含decision字段):
+当 decision=execute 时:
 {{
-  "goal": "用户目标描述",
+  "decision": "execute",
+  "goal": "用户目标",
   "steps": [
     {{
       "step_id": "step_1",
       "description": "步骤描述",
       "tool_name": "工具名称",
-      "arguments": {{"arg1": "value1"}},
+      "arguments": {{"arg": "value"}},
       "expected_result": "预期结果"
     }}
   ]
 }}
 
-重要规则:
-1. step_id 必须唯一,按顺序命名: step_1, step_2, ...
-2. tool_name 必须是可用工具之一
-3. arguments 必须严格匹配工具的参数定义(参数名称和类型)
-4. 如果用户未提供必需的信息:
-   - 优先从对话历史中提取(如"这个订单"指代之前创建的订单ID)
-   - 如果历史中也没有,使用合理的示例值,并在 description 中说明
-5. 只输出JSON,不要其他解释
+当 decision=need_input 时:
+{{
+  "decision": "need_input",
+  "goal": "用户目标",
+  "missing_fields": ["field1", "field2"],
+  "question": "请提供以下信息:\\n- field1\\n- field2"
+}}
 
-示例1: 用户说"创建订单",但未提供具体信息
-- 使用示例值: customer_name="张三", product_name="示例产品", quantity=1, price=100.0, address="示例地址"
-- description: "使用示例值创建订单(用户未提供具体信息)"
+当 decision=reject 时:
+{{
+  "decision": "reject",
+  "goal": "用户目标",
+  "reason": "拒绝原因"
+}}
 
-示例2: 对话历史显示刚创建了订单ORD-1001,用户说"查看这个订单"
-- 从历史中提取: order_id="ORD-1001"
-- description: "查询订单ORD-1001的详细信息"
+决策规则:
+1. execute - 所有必填参数都有值(从用户输入或对话历史提取)
+2. need_input - 缺少必填信息,列出missing_fields并用question询问用户
+3. reject - 任务超出工具能力范围
+
+重要: 绝不使用示例值或猜测值! 信息不足时必须返回need_input。
+只输出JSON,不要其他解释。
 """
 
         # Build conversation history context from context_manager
@@ -149,42 +161,110 @@ class PlannerNodes:
                 plan_json = "\n".join(lines[1:-1]) if len(lines) > 2 else plan_json
                 plan_json = plan_json.replace("```json", "").replace("```", "").strip()
             
-            # Parse JSON
-            plan_dict = json.loads(plan_json)
-            plan = ExecutionPlan(**plan_dict)
-            
-            return {
-                "plan": plan,
-                "plan_json": plan_json,
-                "current_step_index": 0,
-                "step_results": [],
-                "iteration_count": iteration + 1,
-            }
+            # Parse JSON and create PlannerResult
+            planner_dict = json.loads(plan_json)
+            planner_result = PlannerResult(**planner_dict)
+
+            decision = planner_result.decision
+
+            # Handle different decisions
+            if decision == "execute":
+                result = {
+                    "planner_decision": decision,
+                    "planner_result": planner_result,
+                    "plan_json": plan_json,
+                    "step_results": [],
+                    "iteration_count": iteration + 1,
+                }
+
+                # Log planner output
+                logger.info("=" * 80)
+                logger.info("Planner 节点输出 (EXECUTE):")
+                logger.info(json.dumps({
+                    "decision": decision,
+                    "goal": planner_result.goal,
+                    "steps": [s.model_dump() for s in planner_result.steps],
+                    "iteration_count": iteration + 1,
+                }, ensure_ascii=False, indent=2))
+                logger.info("=" * 80)
+
+                return result
+
+            elif decision == "need_input":
+                # Need user input - stop here and ask question
+                result = {
+                    "planner_decision": decision,
+                    "planner_result": planner_result,
+                    "plan_json": plan_json,
+                    "final_content": planner_result.question,
+                }
+
+                # Log planner output
+                logger.info("=" * 80)
+                logger.info("Planner 节点输出 (NEED_INPUT):")
+                logger.info(json.dumps({
+                    "decision": decision,
+                    "goal": planner_result.goal,
+                    "missing_fields": planner_result.missing_fields,
+                    "question": planner_result.question,
+                }, ensure_ascii=False, indent=2))
+                logger.info("=" * 80)
+
+                return result
+
+            else:  # reject
+                # Reject the request
+                result = {
+                    "planner_decision": decision,
+                    "planner_result": planner_result,
+                    "plan_json": plan_json,
+                    "final_content": f"抱歉，无法完成此任务。{planner_result.reason}",
+                }
+
+                # Log planner output
+                logger.info("=" * 80)
+                logger.info("Planner 节点输出 (REJECT):")
+                logger.info(json.dumps({
+                    "decision": decision,
+                    "goal": planner_result.goal,
+                    "reason": planner_result.reason,
+                }, ensure_ascii=False, indent=2))
+                logger.info("=" * 80)
+
+                return result
+
         except Exception as e:
             # Fallback: create a simple error response
-            return {
-                "plan": None,
+            error_result = {
+                "planner_decision": "reject",
+                "planner_result": None,
                 "plan_json": None,
-                "review_decision": ReviewDecision.FAIL,
-                "review_feedback": f"规划失败: {str(e)}",
                 "final_content": f"抱歉,无法生成执行计划: {str(e)}",
             }
 
+            # Log error
+            logger.error("=" * 80)
+            logger.error("Planner 节点错误:")
+            logger.error(json.dumps(error_result, ensure_ascii=False, indent=2))
+            logger.error("=" * 80)
+
+            return error_result
+
     def executor(self, state: PlannerState) -> dict:
         """Executor node: Execute all steps in the plan sequentially."""
-        plan = state.get("plan")
-        if not plan:
+        planner_result = state.get("planner_result")
+        if not planner_result or not planner_result.steps:
             return {
                 "review_decision": ReviewDecision.FAIL,
                 "review_feedback": "没有可执行的计划",
                 "final_content": "执行失败: 没有可执行的计划",
             }
-        
+
         session_id = state.get("session_id", "")
         step_results = []
-        
+
         # Execute each step
-        for step in plan.steps:
+        for step in planner_result.steps:
             tool_name = step.tool_name
             
             # Check if tool exists
@@ -241,10 +321,29 @@ class PlannerNodes:
                     message=f"执行失败: {str(e)}"
                 ))
 
-        return {
+        result = {
             "step_results": step_results,
-            "current_step_index": len(step_results),
         }
+
+        # Log executor output
+        logger.info("=" * 80)
+        logger.info("Executor 节点输出:")
+        logger.info(json.dumps({
+            "total_steps": len(step_results),
+            "steps": [
+                {
+                    "step_id": sr.step_id,
+                    "tool_name": sr.tool_name,
+                    "success": sr.success,
+                    "message": sr.message,
+                    "result": sr.result
+                }
+                for sr in step_results
+            ]
+        }, ensure_ascii=False, indent=2))
+        logger.info("=" * 80)
+
+        return result
 
     def _extract_final_answer(self, step_results: list) -> str:
         """Extract user-friendly final answer from step results."""
@@ -267,7 +366,7 @@ class PlannerNodes:
         - REPLAN: Some steps failed or results don't meet expectations
         - FAIL: Unrecoverable error or max iterations reached
         """
-        plan = state.get("plan")
+        planner_result = state.get("planner_result")
         step_results = state.get("step_results", [])
         iteration = state.get("iteration_count", 0)
         max_iterations = state.get("max_iterations", 3)
@@ -281,8 +380,8 @@ class PlannerNodes:
                 "final_content": f"抱歉,在 {max_iterations} 次尝试后仍未完成任务。",
             }
 
-        # Check if plan exists
-        if not plan:
+        # Check if planner_result exists
+        if not planner_result:
             return {
                 "review_decision": ReviewDecision.FAIL,
                 "review_feedback": "没有执行计划",
@@ -319,7 +418,7 @@ class PlannerNodes:
         user_message = f"""用户目标: {user_goal}
 
 执行计划:
-{plan.model_dump_json(indent=2)}
+{json.dumps({"goal": planner_result.goal, "steps": [s.model_dump() for s in planner_result.steps]}, ensure_ascii=False, indent=2)}
 
 执行结果:
 {results_text}
@@ -357,27 +456,62 @@ class PlannerNodes:
             else:
                 final_content = None  # Will replan, no final content yet
 
-            return {
+            result = {
                 "review_decision": decision,
                 "review_feedback": feedback,
                 "final_content": final_content,
             }
 
+            # Log reviewer output
+            logger.info("=" * 80)
+            logger.info("Reviewer 节点输出:")
+            logger.info(json.dumps({
+                "decision": decision.value,
+                "feedback": feedback,
+                "final_content": final_content,
+            }, ensure_ascii=False, indent=2))
+            logger.info("=" * 80)
+
+            return result
+
         except Exception as e:
             # Fallback: simple logic
             if all_success:
                 final_answer = self._extract_final_answer(step_results)
-                return {
+                fallback_result = {
                     "review_decision": ReviewDecision.PASS,
                     "review_feedback": "所有步骤执行成功",
                     "final_content": final_answer if final_answer else "任务完成！",
                 }
             else:
-                return {
+                fallback_result = {
                     "review_decision": ReviewDecision.REPLAN,
                     "review_feedback": f"部分步骤失败,需要重新规划。错误: {str(e)}",
                     "final_content": None,
                 }
+
+            # Log fallback output
+            logger.warning("=" * 80)
+            logger.warning("Reviewer 节点 (Fallback) 输出:")
+            logger.warning(json.dumps({
+                "decision": fallback_result["review_decision"].value,
+                "feedback": fallback_result["review_feedback"],
+                "final_content": fallback_result["final_content"],
+                "error": str(e)
+            }, ensure_ascii=False, indent=2))
+            logger.warning("=" * 80)
+
+            return fallback_result
+
+    @staticmethod
+    def route_after_planner(state: PlannerState) -> str:
+        """Conditional edge: route based on planner decision."""
+        decision = state.get("planner_decision")
+
+        if decision == "execute":
+            return "executor"  # Continue to execution
+        else:  # need_input or reject
+            return "end"  # Stop and return to user
 
     @staticmethod
     def should_continue(state: PlannerState) -> str:

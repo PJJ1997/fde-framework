@@ -1,9 +1,16 @@
 """Schemas for Planner-Executor-Reviewer architecture."""
 from enum import Enum
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, Dict, List, Literal, Optional, TypedDict
 
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
+
+
+class PlannerDecision(str, Enum):
+    """Planner decision enum."""
+    EXECUTE = "execute"      # 信息充足，可以执行
+    NEED_INPUT = "need_input"  # 缺少必填信息，需要询问用户
+    REJECT = "reject"         # 无法完成任务
 
 
 class ReviewDecision(str, Enum):
@@ -22,10 +29,28 @@ class PlanStep(BaseModel):
     expected_result: str = Field(description="Expected outcome of this step")
 
 
-class ExecutionPlan(BaseModel):
-    """Structured execution plan from Planner."""
+class PlannerResult(BaseModel):
+    """Result from Planner with decision logic."""
+    decision: Literal["execute", "need_input", "reject"] = Field(
+        description="Planner decision: execute (可执行), need_input (需要用户输入), reject (拒绝)"
+    )
     goal: str = Field(description="Overall goal to accomplish")
-    steps: List[PlanStep] = Field(description="Ordered list of steps to execute")
+    steps: List[PlanStep] = Field(
+        default_factory=list,
+        description="Ordered list of steps to execute (only when decision=execute)"
+    )
+    missing_fields: List[str] = Field(
+        default_factory=list,
+        description="List of missing required fields (only when decision=need_input)"
+    )
+    question: Optional[str] = Field(
+        None,
+        description="Question to ask user for missing info (only when decision=need_input)"
+    )
+    reason: Optional[str] = Field(
+        None,
+        description="Reason for rejection (only when decision=reject)"
+    )
 
 
 class StepResult(BaseModel):
@@ -39,7 +64,7 @@ class StepResult(BaseModel):
 
 class PlannerState(TypedDict, total=False):
     """State for Planner-Executor-Reviewer workflow.
-    
+
     Tracks everything needed for the multi-agent loop:
     - What the user wants to do
     - Current plan
@@ -52,22 +77,22 @@ class PlannerState(TypedDict, total=False):
     session_id: str
     messages: List[BaseMessage]
     user_goal: str  # What the user wants to accomplish
-    
-    # Planning
-    plan: Optional[ExecutionPlan]  # Current execution plan
-    plan_json: Optional[str]  # JSON serialization for LLM consumption
-    
+
+    # Planning decision
+    planner_decision: Optional[str]  # execute, need_input, reject
+    planner_result: Optional[PlannerResult]  # Full planner result (contains all info)
+    plan_json: Optional[str]  # Raw JSON from LLM (for debugging/logging)
+
     # Execution tracking
-    current_step_index: int  # Which step we're executing (0-based)
     step_results: List[StepResult]  # Results from all executed steps
-    
+
     # Review
     review_decision: Optional[ReviewDecision]  # PASS, REPLAN, or FAIL
     review_feedback: Optional[str]  # Why reviewer made this decision
-    
+
     # Loop control
     iteration_count: int  # How many Planner -> Executor -> Reviewer cycles
     max_iterations: int  # Safety limit to prevent infinite loops
-    
+
     # Final output
     final_content: Optional[str]  # Final message to user

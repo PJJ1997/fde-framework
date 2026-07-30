@@ -1,6 +1,5 @@
-"""ERP order tools with mock data."""
+"""ERP order tools with SQLite database."""
 from typing import Dict, Any, Optional
-from datetime import datetime
 
 from langchain_core.tools import StructuredTool
 
@@ -12,17 +11,7 @@ from .schemas import (
     ListOrderInput,
     GetOrderInput,
 )
-
-# Mock database
-_mock_orders: Dict[str, Dict[str, Any]] = {}
-_order_counter = 1000
-
-
-def _generate_order_id() -> str:
-    """生成订单ID"""
-    global _order_counter
-    _order_counter += 1
-    return f"ORD-{_order_counter}"
+from .database import get_db
 
 
 def create_order(
@@ -33,21 +22,9 @@ def create_order(
     address: str,
 ) -> Dict[str, Any]:
     """创建新订单"""
-    order_id = _generate_order_id()
-    order = {
-        "order_id": order_id,
-        "customer_name": customer_name,
-        "product_name": product_name,
-        "quantity": quantity,
-        "price": price,
-        "total_amount": quantity * price,
-        "address": address,
-        "status": "created",
-        "created_at": datetime.now().isoformat(),
-        "updated_at": datetime.now().isoformat(),
-    }
-    _mock_orders[order_id] = order
-    return {"success": True, "order": order, "message": f"订单 {order_id} 创建成功"}
+    db = get_db()
+    order = db.create_order(customer_name, product_name, quantity, price, address)
+    return {"success": True, "order": order, "message": f"订单 {order['order_id']} 创建成功"}
 
 
 def update_order(
@@ -58,52 +35,41 @@ def update_order(
     status: Optional[str] = None,
 ) -> Dict[str, Any]:
     """更新订单信息"""
-    if order_id not in _mock_orders:
+    db = get_db()
+    order = db.update_order(order_id, quantity, price, address, status)
+
+    if not order:
         return {"success": False, "error": f"订单 {order_id} 不存在"}
-
-    order = _mock_orders[order_id]
-
-    if quantity is not None:
-        order["quantity"] = quantity
-    if price is not None:
-        order["price"] = price
-    if address is not None:
-        order["address"] = address
-    if status is not None:
-        order["status"] = status
-
-    order["total_amount"] = order["quantity"] * order["price"]
-    order["updated_at"] = datetime.now().isoformat()
 
     return {"success": True, "order": order, "message": f"订单 {order_id} 更新成功"}
 
 
 def delete_order(order_id: str) -> Dict[str, Any]:
     """删除订单"""
-    if order_id not in _mock_orders:
+    db = get_db()
+    deleted_order = db.delete_order(order_id)
+
+    if not deleted_order:
         return {"success": False, "error": f"订单 {order_id} 不存在"}
 
-    deleted_order = _mock_orders.pop(order_id)
     return {"success": True, "order": deleted_order, "message": f"订单 {order_id} 已删除"}
 
 
 def cancel_order(order_id: str, reason: Optional[str] = None) -> Dict[str, Any]:
     """取消订单"""
-    if order_id not in _mock_orders:
-        return {"success": False, "error": f"订单 {order_id} 不存在"}
+    db = get_db()
+    order = db.cancel_order(order_id, reason)
 
-    order = _mock_orders[order_id]
-
-    if order["status"] in ["cancelled", "completed"]:
-        return {
-            "success": False,
-            "error": f"订单 {order_id} 当前状态为 {order['status']}，无法取消",
-        }
-
-    order["status"] = "cancelled"
-    order["cancelled_at"] = datetime.now().isoformat()
-    order["cancel_reason"] = reason or "未提供原因"
-    order["updated_at"] = datetime.now().isoformat()
+    if not order:
+        # Check if order exists
+        existing_order = db.get_order(order_id)
+        if not existing_order:
+            return {"success": False, "error": f"订单 {order_id} 不存在"}
+        else:
+            return {
+                "success": False,
+                "error": f"订单 {order_id} 当前状态为 {existing_order['status']}，无法取消",
+            }
 
     return {"success": True, "order": order, "message": f"订单 {order_id} 已取消"}
 
@@ -114,14 +80,8 @@ def list_order(
     limit: int = 10,
 ) -> Dict[str, Any]:
     """查询订单列表"""
-    orders = list(_mock_orders.values())
-
-    if customer_name:
-        orders = [o for o in orders if o["customer_name"] == customer_name]
-    if status:
-        orders = [o for o in orders if o["status"] == status]
-
-    orders = orders[:limit]
+    db = get_db()
+    orders = db.list_orders(customer_name, status, limit)
 
     return {
         "success": True,
@@ -133,12 +93,15 @@ def list_order(
 
 def get_order(order_id: str) -> Dict[str, Any]:
     """查询单个订单详情"""
-    if order_id not in _mock_orders:
+    db = get_db()
+    order = db.get_order(order_id)
+
+    if not order:
         return {"success": False, "error": f"订单 {order_id} 不存在"}
 
     return {
         "success": True,
-        "order": _mock_orders[order_id],
+        "order": order,
         "message": f"查询到订单 {order_id}",
     }
 

@@ -77,9 +77,19 @@ class PlannerAgent(BaseAgent):
 
         # Edges
         graph.add_edge(START, "planner")
-        graph.add_edge("planner", "executor")
+
+        # Conditional edge from planner: execute → executor, need_input/reject → END
+        graph.add_conditional_edges(
+            "planner",
+            PlannerNodes.route_after_planner,
+            {
+                "executor": "executor",  # decision=execute
+                "end": END,               # decision=need_input or reject
+            },
+        )
+
         graph.add_edge("executor", "reviewer")
-        
+
         # Conditional edge from reviewer
         graph.add_conditional_edges(
             "reviewer",
@@ -111,9 +121,9 @@ class PlannerAgent(BaseAgent):
             "session_id": session_id,
             "messages": input.messages,  # Pass all messages for context
             "user_goal": user_goal,
-            "plan": None,
+            "planner_decision": None,
+            "planner_result": None,
             "plan_json": None,
-            "current_step_index": 0,
             "step_results": [],
             "review_decision": None,
             "review_feedback": None,
