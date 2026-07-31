@@ -36,14 +36,16 @@ from .nodes import (
 from .schemas import PlannerState, ReviewDecision
 
 
-class PlannerAgent(BaseAgent):
-    """Planner-Executor-Reviewer Agent.
-    
+class PlannerExecutorAgent(BaseAgent):
+    """Planner-Executor-Reviewer-Responder Agent.
+
     Structured multi-agent workflow:
-    - Planner generates execution plans using LLM
-    - Executor runs all steps sequentially via tools
-    - Reviewer evaluates and decides next action
-    
+    - Context Builder: Builds structured conversation context
+    - Planner: Generates execution plans using LLM
+    - Executor: Runs all steps sequentially via tools
+    - Reviewer: Evaluates and decides next action
+    - Responder: Formats final response to user
+
     Supports automatic replanning on failure.
     """
 
@@ -209,7 +211,7 @@ class PlannerAgent(BaseAgent):
         resume_data: dict,
         session_id: Optional[str] = None,
     ) -> AgentResult:
-        """Resume not supported for PlannerAgent (no interrupts)."""
+        """Resume not supported for PlannerExecutorAgent (no interrupts)."""
         return AgentResult(
             content="PlannerAgent does not support resume (no interrupts)",
             session_id=session_id,
@@ -221,7 +223,7 @@ class PlannerAgent(BaseAgent):
         resume_data: dict,
         session_id: Optional[str] = None,
     ) -> AsyncIterator[Any]:
-        """Resume stream not supported for PlannerAgent (no interrupts)."""
+        """Resume stream not supported for PlannerExecutorAgent (no interrupts)."""
         yield AgentResult(
             content="PlannerAgent does not support resume_stream (no interrupts)",
             session_id=session_id,

@@ -9,7 +9,7 @@ from langchain_core.tools import StructuredTool
 from agents.base import BaseAgent
 from agents.react.react import ReActAgent
 from agents.workflow.workflow import WorkflowAgent
-from agents.planner.planner_agent import PlannerAgent
+from agents.planner_executor.planner_executor_agent import PlannerExecutorAgent
 
 def _load_config() -> dict:
     """Load agent config from config.yml (read each time so changes take
@@ -45,7 +45,7 @@ def create_agent(
         return WorkflowAgent(llm)
 
     if agent_type == "planner":
-        return PlannerAgent(llm)
+        return PlannerExecutorAgent(llm)
 
     raise ValueError(f"Unknown agent type: {agent_type}. Supported: 'react', 'workflow', 'planner'")
 

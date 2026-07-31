@@ -1,5 +1,5 @@
 """Planner-Executor-Reviewer Agent."""
-from .planner_agent import PlannerAgent
+from .planner_executor_agent import PlannerExecutorAgent
 from .schemas import (
     PlanStep,
     PlannerState,
@@ -8,7 +8,7 @@ from .schemas import (
 )
 
 __all__ = [
-    "PlannerAgent",
+    "PlannerExecutorAgent",
     "PlanStep",
     "PlannerState",
     "ReviewDecision",
