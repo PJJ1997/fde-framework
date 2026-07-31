@@ -21,6 +21,7 @@ from langgraph.types import Command
 
 from agents.base import BaseAgent, AgentInput, AgentResult
 from context import context_manager
+from prompts.system_prompt import build_system_prompt
 
 # Sentinel for detecting iterator exhaustion without raising StopIteration.
 _SENTINEL = object()
@@ -99,10 +100,18 @@ class ReActAgent(BaseAgent):
         previous interrupted state is loaded. If HITL interrupts, the
         thread_id is returned in the confirmation for later resume.
         """
-        messages = input.messages
         session_id = input.session_id or str(uuid.uuid4())
         thread_id = str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
+
+        # Build context from context_manager
+        system_prompt = build_system_prompt(self.tools)
+        messages = context_manager.build(
+            session_id=session_id,
+            system_prompt=system_prompt,
+            user_input=input.user_input,
+            include_history=True
+        )
 
         result = await asyncio.to_thread(
             self._agent.invoke, {"messages": messages}, config=config
@@ -134,10 +143,18 @@ class ReActAgent(BaseAgent):
 
         Each invocation uses a unique thread_id so it starts fresh.
         """
-        messages = input.messages
         session_id = input.session_id or str(uuid.uuid4())
         thread_id = str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
+
+        # Build context from context_manager
+        system_prompt = build_system_prompt(self.tools)
+        messages = context_manager.build(
+            session_id=session_id,
+            system_prompt=system_prompt,
+            user_input=input.user_input,
+            include_history=True
+        )
 
         iterator = iter(self._agent.stream({"messages": messages}, config=config))
 

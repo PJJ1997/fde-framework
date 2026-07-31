@@ -126,20 +126,12 @@ class PlannerExecutorAgent(BaseAgent):
         """Build initial planner state from AgentInput."""
         session_id = input.session_id or str(uuid.uuid4())
 
-        # Extract user goal from the last message
-        user_goal = ""
-        if input.messages:
-            last_human = None
-            for msg in reversed(input.messages):
-                if isinstance(msg, HumanMessage):
-                    last_human = msg
-                    break
-            if last_human:
-                user_goal = last_human.content
+        # Use user_input directly (no need to extract from messages)
+        user_goal = input.user_input or ""
 
         return {
             "session_id": session_id,
-            "messages": input.messages,  # Pass all messages for context
+            "messages": [],  # Agent builds its own context internally
             "user_goal": user_goal,
             "structured_context": None,
             "planner_decision": None,

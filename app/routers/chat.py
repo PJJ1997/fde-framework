@@ -8,7 +8,6 @@ from llm import create_llm
 from tools.registry import registry
 from agents import create_agent, AgentInput, AgentResult
 from context import context_manager
-from prompts.system_prompt import build_system_prompt
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -18,7 +17,6 @@ def step_to_results(step: dict, session_id: str) -> list[dict]:
 
     Unified filter: only user-facing text is sent to frontend.
     - ReAct agent: AIMessage content
-    - Workflow agent: latest step_results entry
     ToolMessage, HumanMessage, and internal metadata are skipped.
     """
     results = []
@@ -30,14 +28,6 @@ def step_to_results(step: dict, session_id: str) -> list[dict]:
             if isinstance(msg, AIMessage) and msg.content:
                 result = AgentResult(content=msg.content, session_id=session_id)
                 results.append(result.to_dict())
-        # Workflow agent: extract latest step_result entry (dict with
-        # {"role": ..., "content": ...})
-        step_results = node_output.get("step_results", [])
-        if step_results:
-            last = step_results[-1]
-            text = last["content"] if isinstance(last, dict) else str(last)
-            result = AgentResult(content=text, session_id=session_id)
-            results.append(result.to_dict())
     return results
 
 
@@ -55,24 +45,16 @@ async def chat(request: Request):
     tools = registry.get_tools(context=context)
     agent = create_agent(llm, tools)
 
-    # Build system prompt: use caller-provided prompt, or inject actual
-    # registered tools dynamically so the LLM only sees real tools.
-    system_prompt = body.get("system_prompt") or build_system_prompt(tools)
-
-    # Build context (returns LangChain messages)
-    messages = context_manager.build(
-        session_id=session_id,
-        system_prompt=system_prompt,
-        user_input=text,
-        include_history=True
-    )
-
-    # Save user message (optional — workflow agents may not need text)
+    # Save user message first (before agent processing)
     if text:
         context_manager.save_user_message(session_id, text)
 
-    # Invoke agent (returns AgentResult)
-    result = await agent.invoke(AgentInput(messages=messages, session_id=session_id))
+    # Invoke agent - agent is responsible for building its own context
+    result = await agent.invoke(AgentInput(
+        messages=[],  # Empty, agent will build context internally
+        session_id=session_id,
+        user_input=text,  # Pass raw user input
+    ))
 
     return result.to_dict()
 
@@ -108,18 +90,7 @@ async def chat_sse(request: Request):
     tools = registry.get_tools(context=context)
     agent = create_agent(llm, tools)
 
-    # Build system prompt with actual registered tools injected dynamically.
-    system_prompt = build_system_prompt(tools)
-
-    # Build context (returns LangChain messages)
-    messages = context_manager.build(
-        session_id=session_id,
-        system_prompt=system_prompt,
-        user_input=text,
-        include_history=True
-    )
-
-    # Save user message (optional — workflow agents may not need text)
+    # Save user message first (before agent processing)
     if text:
         context_manager.save_user_message(session_id, text)
 
@@ -128,7 +99,11 @@ async def chat_sse(request: Request):
         try:
             step_count = 0
 
-            async for step in agent.stream(AgentInput(messages=messages, session_id=session_id)):
+            async for step in agent.stream(AgentInput(
+                messages=[],  # Empty, agent will build context internally
+                session_id=session_id,
+                user_input=text,  # Pass raw user input
+            )):
                 # Check if execution was interrupted (e.g. confirmation needed)
                 if isinstance(step, AgentResult):
                     # Send AgentResult as final event

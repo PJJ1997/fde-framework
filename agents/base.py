@@ -1,9 +1,7 @@
 """Base agent abstract class."""
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, List, Optional, AsyncIterator
-
-from langchain_core.messages import BaseMessage
+from dataclasses import dataclass
+from typing import Any, Optional, AsyncIterator
 
 
 @dataclass
@@ -11,15 +9,14 @@ class AgentInput:
     """Unified input for agent execution.
 
     Attributes:
-        messages: List of LangChain message objects.
         session_id: Session ID for context tracking and middleware.
-        state: Optional agent-specific state dict. Workflow agents use it to
-            pass business params (e.g. order fields) without forcing every
-            agent to know workflow-specific fields. Other agents ignore it.
+        user_input: Raw user text input. Agents build their own context
+            from this using context_manager.
+        state: Optional agent-specific state dict for agent-specific params.
     """
 
-    messages: List[BaseMessage] = field(default_factory=list)
     session_id: Optional[str] = None
+    user_input: str = ""
     state: Optional[dict] = None
 
 
@@ -56,7 +53,7 @@ class BaseAgent(ABC):
         """Invoke the agent.
 
         Args:
-            input: AgentInput with messages and session_id.
+            input: AgentInput with user_input and session_id.
 
         Returns:
             AgentResult with content, confirmation, and session_id.
@@ -68,7 +65,7 @@ class BaseAgent(ABC):
         """Stream the agent execution.
 
         Args:
-            input: AgentInput with messages and session_id.
+            input: AgentInput with user_input and session_id.
 
         Yields:
             Agent execution steps as dictionaries, or a final AgentResult

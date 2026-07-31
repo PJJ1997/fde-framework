@@ -1,4 +1,4 @@
-# Active agent type: "react", "workflow", or "planner"
+# Active agent type: "react" or "planner"
 # Switch agents by changing this single value — no code changes needed.
 active: planner
 
@@ -7,14 +7,11 @@ active: planner
 # Each agent passes this directly to Command(resume=...), so the format here
 # must match the agent's underlying resume mechanism.
 #
-# react:    HumanInTheLoopMiddleware expects {"decisions": [Decision, ...]}
-#           Decision types: approve / edit / reject / respond
-# workflow: LangGraph interrupt() expects the raw resume value directly
-# planner:  PlannerAgent has no interrupts (no resume needed)
+# react:   HumanInTheLoopMiddleware expects {"decisions": [Decision, ...]}
+#          Decision types: approve / edit / reject / respond
+# planner: PlannerExecutorAgent has no interrupts (no resume needed)
 resume_data:
   react:
     decisions:
       - type: approve
-  workflow:
-    confirmed: true
   planner: {}
