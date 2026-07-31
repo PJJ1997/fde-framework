@@ -6,7 +6,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..schemas import PlannerState, ReviewDecision, ReviewResult
-from .utils import clean_json_response, extract_final_answer
+from .utils import clean_json_response
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class ReviewerNode:
         self.llm = llm
     
     def _build_results_summary(self, step_results: list) -> tuple[str, bool]:
-        """Build results summary text and check if all succeeded.
+        """Build structured results JSON and check if all succeeded.
         
         Returns:
             tuple: (results_text, all_success)
@@ -27,12 +27,22 @@ class ReviewerNode:
         all_success = True
         
         for result in step_results:
-            status = "✓" if result.success else "✗"
-            results_summary.append(f"{status} {result.step_id} ({result.tool_name}): {result.message}")
+            results_summary.append({
+                "step_id": result.step_id,
+                "tool_name": result.tool_name,
+                "success": result.success,
+                "message": result.message,
+                "result": result.result,
+            })
             if not result.success:
                 all_success = False
         
-        return "\n".join(results_summary), all_success
+        return json.dumps(
+            results_summary,
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        ), all_success
     
     def _build_system_prompt(self) -> str:
         """Build system prompt for reviewer."""
@@ -71,7 +81,7 @@ class ReviewerNode:
         """
         try:
             # Try structured output first
-            structured_llm = self.llm.with_structured_output(ReviewResult)
+            structured_llm = self.llm.with_structured_output(ReviewResult, method="function_calling")
             review_result = structured_llm.invoke(messages)
             return ReviewDecision(review_result.decision), review_result.feedback
         except Exception as struct_error:
@@ -108,7 +118,6 @@ class ReviewerNode:
             return {
                 "review_decision": ReviewDecision.FAIL,
                 "review_feedback": f"已达到最大迭代次数 ({max_iterations})",
-                "final_content": f"抱歉,在 {max_iterations} 次尝试后仍未完成任务。",
             }
 
         # Check if planner_result exists
@@ -116,7 +125,6 @@ class ReviewerNode:
             return {
                 "review_decision": ReviewDecision.FAIL,
                 "review_feedback": "没有执行计划",
-                "final_content": "执行失败: 没有执行计划",
             }
 
         try:
@@ -134,19 +142,9 @@ class ReviewerNode:
             
             decision, feedback = self._call_llm_with_fallback(messages)
 
-            # Build final content - user-friendly output only
-            if decision == ReviewDecision.PASS:
-                final_answer = extract_final_answer(step_results)
-                final_content = final_answer if final_answer else feedback
-            elif decision == ReviewDecision.FAIL:
-                final_content = f"抱歉，{feedback}"
-            else:
-                final_content = None  # Will replan, no final content yet
-
             result = {
                 "review_decision": decision,
                 "review_feedback": feedback,
-                "final_content": final_content,
             }
 
             # Log reviewer output
@@ -155,7 +153,6 @@ class ReviewerNode:
             logger.info(json.dumps({
                 "decision": decision.value,
                 "feedback": feedback,
-                "final_content": final_content,
             }, ensure_ascii=False, indent=2))
             logger.info("=" * 80)
 
@@ -164,17 +161,14 @@ class ReviewerNode:
         except Exception as e:
             # Fallback: simple logic
             if all_success:
-                final_answer = extract_final_answer(step_results)
                 fallback_result = {
                     "review_decision": ReviewDecision.PASS,
                     "review_feedback": "所有步骤执行成功",
-                    "final_content": final_answer if final_answer else "任务完成！",
                 }
             else:
                 fallback_result = {
                     "review_decision": ReviewDecision.REPLAN,
                     "review_feedback": f"部分步骤失败,需要重新规划。错误: {str(e)}",
-                    "final_content": None,
                 }
 
             # Log fallback output
@@ -183,7 +177,6 @@ class ReviewerNode:
             logger.warning(json.dumps({
                 "decision": fallback_result["review_decision"].value,
                 "feedback": fallback_result["review_feedback"],
-                "final_content": fallback_result["final_content"],
                 "error": str(e)
             }, ensure_ascii=False, indent=2))
             logger.warning("=" * 80)

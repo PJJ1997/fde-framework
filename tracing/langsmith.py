@@ -7,9 +7,8 @@ send traces to LangSmith when these env vars are set:
   - LANGSMITH_PROJECT=<name>     trace grouping (optional, defaults below)
 """
 import os
-from pathlib import Path
 
-from dotenv import load_dotenv
+from llm.config import load_environment
 
 # Default project name if not set in .env.
 _DEFAULT_PROJECT = "fde-framework"
@@ -21,8 +20,7 @@ def setup_tracing() -> None:
     Must be called before any LangChain import so the env vars are visible
     when LangChain initializes its tracing client.
     """
-    env_path = Path(__file__).resolve().parent.parent / ".env"
-    load_dotenv(dotenv_path=env_path)
+    load_environment()
 
     if not os.getenv("LANGSMITH_API_KEY"):
         print("[Tracing] LANGSMITH_API_KEY missing, tracing disabled")

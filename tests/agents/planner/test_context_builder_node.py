@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 from agents.planner.nodes.context_builder_node import ContextBuilderNode
 from context.models import Message
-from context.structured import StructuredConversationContext
+from context.structured import CurrentRequest, StructuredConversationContext
 
 
 class ContextBuilderNodeTests(unittest.TestCase):
@@ -48,11 +48,11 @@ class ContextBuilderNodeTests(unittest.TestCase):
             summary="已创建订单。",
         )
         expected = previous.model_copy(update={
-            "current_request": {
-                "raw_text": "这个订单多少钱",
-                "intent": "get_order",
-                "is_follow_up": True,
-            }
+            "current_request": CurrentRequest(
+                raw_text="这个订单多少钱",
+                intent="get_order",
+                is_follow_up=True,
+            )
         })
         llm, structured = self._make_llm(expected)
         manager = Mock()

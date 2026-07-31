@@ -31,6 +31,13 @@ class ReviewResult(BaseModel):
     )
 
 
+class ResponderResult(BaseModel):
+    """Structured final response produced for the user."""
+    content: str = Field(
+        description="Final user-facing response based only on execution results"
+    )
+
+
 class PlanStep(BaseModel):
     """Single step in an execution plan."""
     step_id: str = Field(description="Unique step identifier, e.g., 'step_1'")

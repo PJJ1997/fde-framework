@@ -71,17 +71,26 @@ class ExecutorNode:
                     # Try to get a concise message
                     if "message" in result:
                         message = result["message"]
+                    elif "error" in result:
+                        message = str(result["error"])
                     elif "result" in result:
                         message = f"结果: {result['result']}"
                     else:
                         message = str(result)
+                    success = bool(
+                        result.get(
+                            "success",
+                            "error" not in result,
+                        )
+                    )
                 else:
                     message = str(result)
+                    success = True
                 
                 step_results.append(StepResult(
                     step_id=step.step_id,
                     tool_name=tool_name,
-                    success=True,
+                    success=success,
                     result=result if isinstance(result, dict) else {"output": result},
                     message=message
                 ))

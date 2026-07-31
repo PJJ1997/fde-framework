@@ -96,7 +96,7 @@ class PlannerNode:
         """
         try:
             # Try structured output first (may not be supported by all providers)
-            structured_llm = self.llm.with_structured_output(PlannerResult)
+            structured_llm = self.llm.with_structured_output(PlannerResult, method="function_calling")
             planner_result = structured_llm.invoke(messages)
             plan_json = planner_result.model_dump_json(indent=2)
             return planner_result, plan_json

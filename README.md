@@ -37,16 +37,14 @@ pip install -r requirements.txt
 
 ### 2. 配置说明
 
-API key 已在 [llm/providers/deepseek.py](file:///d:/python_project/fde-framework/llm/providers/deepseek.py) 中硬编码:
+复制环境变量示例文件，并在本地 `.env` 中填写 LLM 和 LangSmith 配置：
 
-```python
-return ChatOpenAI(
-    model="deepseek-chat",
-    api_key="sk-0077f8cbbeff49bc8c450c1ecb5ac451",
-    base_url="https://api.deepseek.com/v1",
-    temperature=0.7,
-)
+```bash
+cp .env.example .env
 ```
+
+`.env` 已被 Git 忽略，请勿把真实 API key 提交到仓库。通过
+`LLM_PROVIDER=azure_openai` 或 `LLM_PROVIDER=deepseek` 选择默认模型服务。
 
 **如果遇到网络问题**,可能需要配置代理:
 

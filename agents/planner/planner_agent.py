@@ -1,15 +1,16 @@
-"""Planner-Executor-Reviewer Agent using LangGraph.
+"""Planner-Executor-Reviewer-Responder Agent using LangGraph.
 
 Implements a three-stage agent architecture:
 1. Planner: Generates structured execution plan
 2. Executor: Executes all steps in the plan sequentially
 3. Reviewer: Evaluates results and decides PASS/REPLAN/FAIL
+4. Responder: Turns reviewed results into the final user response
 
 Flow:
-START -> Planner -> Executor -> Reviewer
-                     ↑             |
-                     └─── REPLAN ──┘
-                          PASS/FAIL -> END
+START -> Context Builder -> Planner -> Executor -> Reviewer
+                              ↑                    |
+                              └──── REPLAN ────────┘
+                                   PASS/FAIL -> Responder -> END
 """
 import asyncio
 import uuid
@@ -28,6 +29,7 @@ from .nodes import (
     ExecutorNode,
     PlannerNode,
     ReviewerNode,
+    ResponderNode,
     route_after_planner,
     route_after_reviewer,
 )
@@ -80,12 +82,14 @@ class PlannerAgent(BaseAgent):
         planner_node = PlannerNode(self.llm, self._tools)
         executor_node = ExecutorNode(self._tools)
         reviewer_node = ReviewerNode(self.llm)
+        responder_node = ResponderNode(self.llm)
 
         graph = StateGraph(PlannerState)
         graph.add_node("context_builder", context_builder_node)
         graph.add_node("planner", planner_node)
         graph.add_node("executor", executor_node)
         graph.add_node("reviewer", reviewer_node)
+        graph.add_node("responder", responder_node)
 
         # Edges
         graph.add_edge(START, "context_builder")
@@ -109,9 +113,10 @@ class PlannerAgent(BaseAgent):
             route_after_reviewer,
             {
                 "planner": "planner",  # REPLAN
-                "end": END,            # PASS or FAIL
+                "responder": "responder",  # PASS or FAIL
             },
         )
+        graph.add_edge("responder", END)
 
         return graph.compile(checkpointer=self._checkpointer)
 

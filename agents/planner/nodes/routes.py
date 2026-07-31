@@ -17,7 +17,6 @@ def route_after_reviewer(state: PlannerState) -> str:
     """Conditional edge: route based on reviewer decision."""
     decision = state.get("review_decision")
     
-    if decision == ReviewDecision.PASS or decision == ReviewDecision.FAIL:
-        return "end"
-    else:  # REPLAN
+    if decision == ReviewDecision.REPLAN:
         return "planner"
+    return "responder"

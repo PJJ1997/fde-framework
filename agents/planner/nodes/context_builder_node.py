@@ -83,7 +83,8 @@ class ContextBuilderNode:
         """Use native structured output, with validated JSON fallback."""
         try:
             structured_llm = self.llm.with_structured_output(
-                StructuredConversationContext
+                StructuredConversationContext,
+                method="function_calling",
             )
             result = structured_llm.invoke(messages)
             return StructuredConversationContext.model_validate(result)
@@ -116,4 +117,11 @@ class ContextBuilderNode:
             context,
             last_message_id=last_message_id,
         )
+
+        # Log context builder output
+        logger.info("=" * 80)
+        logger.info("ContextBuilder 节点输出:")
+        logger.info(context.model_dump_json(indent=2, exclude_none=True))
+        logger.info("=" * 80)
+
         return {"structured_context": context}

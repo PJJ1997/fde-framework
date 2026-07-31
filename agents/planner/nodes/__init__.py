@@ -3,6 +3,7 @@ from .context_builder_node import ContextBuilderNode
 from .planner_node import PlannerNode
 from .executor_node import ExecutorNode
 from .reviewer_node import ReviewerNode
+from .responder_node import ResponderNode
 from .routes import route_after_planner, route_after_reviewer
 
 __all__ = [
@@ -10,6 +11,7 @@ __all__ = [
     "PlannerNode",
     "ExecutorNode",
     "ReviewerNode",
+    "ResponderNode",
     "route_after_planner",
     "route_after_reviewer",
 ]
