@@ -93,6 +93,16 @@ class ReActAgent(BaseAgent):
             "thread_id": thread_id,
         }
 
+    def _is_ai_message(self, message: Any) -> bool:
+        """Check if a message is an AI message using the adapter."""
+        return context_manager.message_adapter.get_message_type(message) == "assistant"
+
+    def _get_message_content(self, message: Any) -> str:
+        """Get text content from a message, framework-agnostic."""
+        # Access content attribute if it exists (works for LangChain messages)
+        content = getattr(message, "content", "")
+        return content if isinstance(content, str) else ""
+
     async def invoke(self, input: AgentInput) -> AgentResult:
         """Invoke the agent.
 
@@ -135,13 +145,17 @@ class ReActAgent(BaseAgent):
                 confirmation=self._build_confirmation(session_id, thread_id),
             )
 
-        content = all_messages[-1].content if all_messages else ""
+        # Extract final content using helper method (framework-agnostic)
+        content = self._get_message_content(all_messages[-1]) if all_messages else ""
         return AgentResult(content=content, session_id=session_id)
 
-    async def stream(self, input: AgentInput) -> AsyncIterator[Any]:
+    async def stream(self, input: AgentInput) -> AsyncIterator[AgentResult]:
         """Stream the agent execution.
 
         Each invocation uses a unique thread_id so it starts fresh.
+
+        Yields:
+            AgentResult objects containing user-facing content from each step.
         """
         session_id = input.session_id or str(uuid.uuid4())
         thread_id = str(uuid.uuid4())
@@ -163,11 +177,20 @@ class ReActAgent(BaseAgent):
             step = await asyncio.to_thread(next, iterator, _SENTINEL)
             if step is _SENTINEL:
                 break
+
             # Collect new messages produced by this step for persistence
             for node_output in step.values():
                 if isinstance(node_output, dict) and "messages" in node_output:
                     new_messages.extend(node_output["messages"])
-            yield step
+
+                    # Extract AI message content and yield as AgentResult
+                    for msg in node_output["messages"]:
+                        # Only yield AI messages with content (user-facing output)
+                        if self._is_ai_message(msg) and self._get_message_content(msg):
+                            yield AgentResult(
+                                content=self._get_message_content(msg),
+                                session_id=session_id
+                            )
 
         # Persist messages produced during this execution
         if new_messages:
@@ -246,11 +269,14 @@ class ReActAgent(BaseAgent):
         thread_id: str,
         resume_data: dict,
         session_id: Optional[str] = None,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[AgentResult]:
         """Resume the agent after a HITL interrupt with streaming output.
 
         Mirrors stream() but starts from Command(resume=...) so the agent
         continues from where it was interrupted.
+
+        Yields:
+            AgentResult objects containing user-facing content from each step.
         """
         config = {"configurable": {"thread_id": thread_id}}
 
@@ -282,7 +308,13 @@ class ReActAgent(BaseAgent):
                         if hasattr(msg, "id") and msg.id and msg.id in seen_ids:
                             continue
                         new_messages.append(msg)
-            yield step
+
+                        # Yield AI message content as AgentResult
+                        if self._is_ai_message(msg) and self._get_message_content(msg):
+                            yield AgentResult(
+                                content=self._get_message_content(msg),
+                                session_id=session_id
+                            )
 
         # Persist the user's confirmation + agent's new messages
         if session_id:

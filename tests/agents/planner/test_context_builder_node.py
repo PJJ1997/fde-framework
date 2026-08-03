@@ -1,10 +1,9 @@
 import json
 import unittest
-from datetime import datetime
 from unittest.mock import Mock
 
-from agents.planner.nodes.context_builder_node import ContextBuilderNode
-from context.models import Message
+from agents.planner_executor.nodes.context_builder_node import ContextBuilderNode
+from db.models import StoredMessage, TextContent
 from context.structured import CurrentRequest, StructuredConversationContext
 
 
@@ -30,6 +29,7 @@ class ContextBuilderNodeTests(unittest.TestCase):
         manager = Mock()
         manager.get_structured_context.return_value = None
         manager.get_session_history.return_value = []
+        manager.get_last_message_id.return_value = None
 
         result = ContextBuilderNode(llm, manager)({
             "session_id": "session-1",
@@ -58,14 +58,12 @@ class ContextBuilderNodeTests(unittest.TestCase):
         manager = Mock()
         manager.get_structured_context.return_value = previous
         manager.get_session_history.return_value = [
-            Message(
-                id=9,
-                session_id="session-1",
-                role="human",
-                content=json.dumps({"content": "刚创建了订单"}),
-                created_at=datetime.now(),
+            StoredMessage(
+                message_type="user",
+                content=[TextContent(text="刚创建了订单")],
             )
         ]
+        manager.get_last_message_id.return_value = 9
 
         ContextBuilderNode(llm, manager)({
             "session_id": "session-1",
@@ -79,8 +77,12 @@ class ContextBuilderNodeTests(unittest.TestCase):
             "ORD-1001",
         )
         self.assertEqual(
-            payload["recent_messages"][0]["content"],
+            payload["recent_messages"][0]["content"][0]["text"],
             "刚创建了订单",
+        )
+        self.assertEqual(
+            payload["recent_messages"][0]["message_type"],
+            "user",
         )
         manager.save_structured_context.assert_called_once_with(
             "session-1", expected, last_message_id=9
@@ -95,6 +97,7 @@ class ContextBuilderNodeTests(unittest.TestCase):
         manager = Mock()
         manager.get_structured_context.return_value = None
         manager.get_session_history.return_value = []
+        manager.get_last_message_id.return_value = None
 
         with self.assertRaises(RuntimeError):
             ContextBuilderNode(llm, manager)({

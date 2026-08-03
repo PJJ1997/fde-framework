@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.planner.schemas import StepResult
+from agents.planner_executor.schemas import StepResult
 from context.manager import ContextManager
 from context.structured import StructuredConversationContext
 
@@ -16,6 +16,12 @@ class ContextStorageTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp_dir.cleanup()
+
+    def test_manager_composes_table_specific_repositories(self):
+        self.assertIsNotNone(self.manager.message_repository)
+        self.assertIsNotNone(
+            self.manager.conversation_context_repository
+        )
 
     def test_save_load_and_version_increment(self):
         first = StructuredConversationContext(summary="first")
@@ -100,8 +106,10 @@ class ContextStorageTests(unittest.TestCase):
         self.assertEqual(
             updated.tool_facts[0].data["order"]["price"], 80
         )
-        stored = self.manager.db.get_conversation_context("session-1")
-        self.assertEqual(stored["last_message_id"], 11)
+        stored = self.manager.conversation_context_repository.get(
+            "session-1"
+        )
+        self.assertEqual(stored.last_message_id, 11)
 
 
 if __name__ == "__main__":

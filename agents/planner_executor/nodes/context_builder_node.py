@@ -42,17 +42,6 @@ class ContextBuilderNode:
         self.manager = manager
         self.max_messages = max_messages
 
-    @staticmethod
-    def _plain_content(stored_content: str) -> str:
-        """Extract readable content from a persisted LangChain message."""
-        try:
-            data = json.loads(stored_content)
-            if isinstance(data, dict):
-                return str(data.get("content", ""))
-        except (json.JSONDecodeError, TypeError):
-            pass
-        return stored_content
-
     def _build_payload(
         self,
         session_id: str,
@@ -64,17 +53,13 @@ class ContextBuilderNode:
         )
         history = self.manager.get_session_history(session_id)
         recent = history[-self.max_messages:]
-        last_message_id = recent[-1].id if recent else None
+        last_message_id = self.manager.get_last_message_id(session_id)
 
         return {
             "previous_context": previous.model_dump(mode="json"),
             "current_user_input": user_goal,
             "recent_messages": [
-                {
-                    "message_id": message.id,
-                    "role": message.role,
-                    "content": self._plain_content(message.content),
-                }
+                message.model_dump(mode="json")
                 for message in recent
             ],
         }, last_message_id

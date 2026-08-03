@@ -1,7 +1,7 @@
 """Base agent abstract class."""
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Optional, AsyncIterator
+from typing import Optional, AsyncIterator
 
 
 @dataclass
@@ -61,15 +61,16 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    async def stream(self, input: AgentInput) -> AsyncIterator[Any]:
+    async def stream(self, input: AgentInput) -> AsyncIterator[AgentResult]:
         """Stream the agent execution.
 
         Args:
             input: AgentInput with user_input and session_id.
 
         Yields:
-            Agent execution steps as dictionaries, or a final AgentResult
-            if execution was interrupted (e.g. confirmation needed).
+            AgentResult objects containing user-facing content from each step.
+            If execution was interrupted (e.g. confirmation needed), the final
+            AgentResult will contain the confirmation data.
         """
         pass
 
@@ -101,7 +102,7 @@ class BaseAgent(ABC):
         thread_id: str,
         resume_data: dict,
         session_id: Optional[str] = None,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[AgentResult]:
         """Resume agent execution with streaming output.
 
         Streams step-by-step output after resuming from an interrupt,
@@ -113,7 +114,7 @@ class BaseAgent(ABC):
             session_id: Session ID for persisting newly produced messages.
 
         Yields:
-            LangGraph step dicts, and a final AgentResult if another
+            AgentResult objects, with a final AgentResult if another
             interrupt occurs (for chained confirmations).
         """
         pass

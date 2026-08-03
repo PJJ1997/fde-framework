@@ -1,6 +1,5 @@
 from .manager import ContextManager, context_manager
-from .models import Message
-from .sqlite import SQLiteManager
+from db.models import ConversationContext, Message
 from .structured import (
     CurrentRequest,
     ResolvedReference,
@@ -12,7 +11,7 @@ __all__ = [
     "ContextManager",
     "context_manager",
     "Message",
-    "SQLiteManager",
+    "ConversationContext",
     "CurrentRequest",
     "ResolvedReference",
     "StructuredConversationContext",

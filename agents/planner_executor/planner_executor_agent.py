@@ -15,10 +15,10 @@ START -> Context Builder -> Planner -> Executor -> Reviewer
 import asyncio
 import uuid
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional
+from typing import AsyncIterator, Optional
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage
 from langgraph.graph import StateGraph, START, END
 
 from agents.base import BaseAgent, AgentInput, AgentResult
@@ -33,7 +33,7 @@ from .nodes import (
     route_after_planner,
     route_after_reviewer,
 )
-from .schemas import PlannerState, ReviewDecision
+from .schemas import PlannerState
 
 
 class PlannerExecutorAgent(BaseAgent):
@@ -169,8 +169,12 @@ class PlannerExecutorAgent(BaseAgent):
 
         return AgentResult(content=content, session_id=session_id)
 
-    async def stream(self, input: AgentInput) -> AsyncIterator[Any]:
-        """Stream planner agent execution."""
+    async def stream(self, input: AgentInput) -> AsyncIterator[AgentResult]:
+        """Stream planner agent execution.
+
+        Yields:
+            AgentResult containing the final response content.
+        """
         initial_state = self._build_initial_state(input)
         session_id = initial_state["session_id"]
         thread_id = str(uuid.uuid4())
@@ -191,6 +195,9 @@ class PlannerExecutorAgent(BaseAgent):
 
         # Yield only the final result
         if final_content:
+            # Save as assistant message
+            # TODO: Add create_ai_message method to MessageAdapter
+            from langchain_core.messages import AIMessage
             context_manager.save_agent_messages(
                 session_id,
                 [AIMessage(content=final_content)]
@@ -199,8 +206,8 @@ class PlannerExecutorAgent(BaseAgent):
 
     async def resume(
         self,
-        thread_id: str,
-        resume_data: dict,
+        thread_id: str,  # noqa: ARG002 - Required by BaseAgent interface
+        resume_data: dict,  # noqa: ARG002 - Required by BaseAgent interface
         session_id: Optional[str] = None,
     ) -> AgentResult:
         """Resume not supported for PlannerExecutorAgent (no interrupts)."""
@@ -211,10 +218,10 @@ class PlannerExecutorAgent(BaseAgent):
 
     async def resume_stream(
         self,
-        thread_id: str,
-        resume_data: dict,
+        thread_id: str,  # noqa: ARG002 - Required by BaseAgent interface
+        resume_data: dict,  # noqa: ARG002 - Required by BaseAgent interface
         session_id: Optional[str] = None,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[AgentResult]:
         """Resume stream not supported for PlannerExecutorAgent (no interrupts)."""
         yield AgentResult(
             content="PlannerAgent does not support resume_stream (no interrupts)",

@@ -3,32 +3,12 @@ import json
 import uuid
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage
 from llm import create_llm
 from tools.registry import registry
 from agents import create_agent, AgentInput, AgentResult
 from context import context_manager
 
 router = APIRouter(prefix="/api", tags=["chat"])
-
-
-def step_to_results(step: dict, session_id: str) -> list[dict]:
-    """Convert a LangGraph step to AgentResult.to_dict() format.
-
-    Unified filter: only user-facing text is sent to frontend.
-    - ReAct agent: AIMessage content
-    ToolMessage, HumanMessage, and internal metadata are skipped.
-    """
-    results = []
-    for node_output in step.values():
-        if not isinstance(node_output, dict):
-            continue
-        # ReAct agent: extract AIMessage text content
-        for msg in node_output.get("messages", []):
-            if isinstance(msg, AIMessage) and msg.content:
-                result = AgentResult(content=msg.content, session_id=session_id)
-                results.append(result.to_dict())
-    return results
 
 
 @router.post("/chat")
@@ -51,9 +31,8 @@ async def chat(request: Request):
 
     # Invoke agent - agent is responsible for building its own context
     result = await agent.invoke(AgentInput(
-        messages=[],  # Empty, agent will build context internally
         session_id=session_id,
-        user_input=text,  # Pass raw user input
+        user_input=text,
     ))
 
     return result.to_dict()
@@ -95,47 +74,49 @@ async def chat_sse(request: Request):
         context_manager.save_user_message(session_id, text)
 
     async def generate():
-        """Generate SSE events from agent stream."""
+        """Generate SSE events from agent stream.
+
+        All events are now AgentResult objects - no LangChain message processing needed.
+        """
         try:
             step_count = 0
+            has_confirmation = False
 
-            async for step in agent.stream(AgentInput(
-                messages=[],  # Empty, agent will build context internally
+            async for result in agent.stream(AgentInput(
                 session_id=session_id,
-                user_input=text,  # Pass raw user input
+                user_input=text,
             )):
-                # Check if execution was interrupted (e.g. confirmation needed)
-                if isinstance(step, AgentResult):
-                    # Send AgentResult as final event
-                    final_data = json.dumps(
-                        step.to_dict(),
-                        ensure_ascii=False,
-                        default=str
-                    )
-                    yield f"data: {final_data}\n\n"
-                    return
-
+                # Agent.stream() now yields AgentResult objects
                 step_count += 1
 
-                # Skip empty middleware steps (e.g. {"HumanInTheLoopMiddleware.after_model": null})
-                if all(v is None for v in step.values()):
-                    continue
+                # Check if this is a confirmation request (execution interrupted)
+                if result.confirmation is not None:
+                    has_confirmation = True
 
-                # Send clean SSE events in AgentResult format
-                for event in step_to_results(step, session_id):
-                    event_data = json.dumps(event, ensure_ascii=False)
-                    yield f"data: {event_data}\n\n"
+                # Send AgentResult as SSE event
+                event_data = json.dumps(
+                    result.to_dict(),
+                    ensure_ascii=False,
+                    default=str
+                )
+                yield f"data: {event_data}\n\n"
+
+                # If confirmation required, stop streaming
+                if has_confirmation:
+                    print(f"[SSE] Interrupted for confirmation after {step_count} steps")
+                    return
 
             print(f"[SSE] Completed: {step_count} steps")
 
-            # Final event: AgentResult format
-            final_result = AgentResult(session_id=session_id)
-            final_data = json.dumps(
-                final_result.to_dict(),
-                ensure_ascii=False,
-                default=str
-            )
-            yield f"data: {final_data}\n\n"
+            # Send final empty event to signal completion (if no confirmation)
+            if not has_confirmation:
+                final_result = AgentResult(session_id=session_id)
+                final_data = json.dumps(
+                    final_result.to_dict(),
+                    ensure_ascii=False,
+                    default=str
+                )
+                yield f"data: {final_data}\n\n"
 
         except Exception as e:
             print(f"[SSE ERROR] {type(e).__name__}: {e}")

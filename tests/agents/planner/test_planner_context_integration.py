@@ -4,12 +4,12 @@ from unittest.mock import AsyncMock, Mock
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from agents.planner.nodes.executor_node import ExecutorNode
-from agents.planner.nodes.planner_node import PlannerNode
-from agents.planner.nodes.reviewer_node import ReviewerNode
-from agents.planner.nodes.routes import route_after_reviewer
-from agents.planner.planner_agent import PlannerAgent
-from agents.planner.schemas import (
+from agents.planner_executor.nodes.executor_node import ExecutorNode
+from agents.planner_executor.nodes.planner_node import PlannerNode
+from agents.planner_executor.nodes.reviewer_node import ReviewerNode
+from agents.planner_executor.nodes.routes import route_after_reviewer
+from agents.planner_executor.planner_executor_agent import PlannerExecutorAgent
+from agents.planner_executor.schemas import (
     PlanStep,
     PlannerResult,
     ReviewDecision,
@@ -41,7 +41,7 @@ class PlannerContextIntegrationTests(unittest.TestCase):
         self.assertIsNone(payload["review_feedback"])
 
     def test_graph_builds_context_once_before_planning(self):
-        agent = PlannerAgent.__new__(PlannerAgent)
+        agent = PlannerExecutorAgent.__new__(PlannerExecutorAgent)
         agent.llm = Mock()
         agent.max_iterations = 3
         agent._checkpointer = MemorySaver()
@@ -56,7 +56,7 @@ class PlannerContextIntegrationTests(unittest.TestCase):
         self.assertIn(("reviewer", "planner"), edges)
 
     def test_graph_routes_review_completion_through_responder(self):
-        agent = PlannerAgent.__new__(PlannerAgent)
+        agent = PlannerExecutorAgent.__new__(PlannerExecutorAgent)
         agent.llm = Mock()
         agent.max_iterations = 3
         agent._checkpointer = MemorySaver()

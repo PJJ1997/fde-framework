@@ -2,8 +2,8 @@ import json
 import unittest
 from unittest.mock import Mock
 
-from agents.planner.nodes.responder_node import ResponderNode
-from agents.planner.schemas import (
+from agents.planner_executor.nodes.responder_node import ResponderNode
+from agents.planner_executor.schemas import (
     PlanStep,
     PlannerResult,
     ResponderResult,
