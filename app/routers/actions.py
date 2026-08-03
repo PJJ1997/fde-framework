@@ -7,7 +7,6 @@ from fastapi.responses import StreamingResponse
 from llm import create_llm
 from tools.registry import registry
 from agents import create_agent, get_resume_data, AgentResult
-from app.routers.chat import step_to_results
 
 router = APIRouter(prefix="/api", tags=["actions"])
 
@@ -70,34 +69,44 @@ async def confirm_action_sse(request: Request):
     resume_data = get_resume_data()
 
     async def generate():
-        """Generate SSE events from agent resume_stream."""
+        """Generate SSE events from agent resume_stream.
+
+        resume_stream() now yields AgentResult objects directly.
+        """
         try:
-            async for step in agent.resume_stream(
+            has_confirmation = False
+
+            async for result in agent.resume_stream(
                 thread_id, resume_data, session_id=session_id
             ):
-                # AgentResult means another interrupt (chained confirmation)
-                if isinstance(step, AgentResult):
-                    final_data = json.dumps(
-                        step.to_dict(), ensure_ascii=False, default=str
-                    )
-                    yield f"data: {final_data}\n\n"
+                # Agent.resume_stream() now yields AgentResult objects
+
+                # Check if this is another interrupt (chained confirmation)
+                if result.confirmation is not None:
+                    has_confirmation = True
+
+                # Send AgentResult as SSE event
+                event_data = json.dumps(
+                    result.to_dict(),
+                    ensure_ascii=False,
+                    default=str
+                )
+                yield f"data: {event_data}\n\n"
+
+                # If confirmation required, stop streaming
+                if has_confirmation:
+                    print(f"[CONFIRM SSE] Chained confirmation detected")
                     return
 
-                # Skip empty middleware steps
-                if all(v is None for v in step.values()):
-                    continue
-
-                # Send clean SSE events in AgentResult format
-                for event in step_to_results(step, session_id):
-                    event_data = json.dumps(event, ensure_ascii=False)
-                    yield f"data: {event_data}\n\n"
-
-            # Final event
-            final_result = AgentResult(session_id=session_id)
-            final_data = json.dumps(
-                final_result.to_dict(), ensure_ascii=False, default=str
-            )
-            yield f"data: {final_data}\n\n"
+            # Send final empty event to signal completion (if no confirmation)
+            if not has_confirmation:
+                final_result = AgentResult(session_id=session_id)
+                final_data = json.dumps(
+                    final_result.to_dict(),
+                    ensure_ascii=False,
+                    default=str
+                )
+                yield f"data: {final_data}\n\n"
 
         except Exception as e:
             print(f"[CONFIRM SSE ERROR] {type(e).__name__}: {e}")
