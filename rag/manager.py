@@ -4,7 +4,7 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 
 from .documents import DocumentLoader, TextSplitter
-from .embedding.local import create_embeddings
+from .embedding import create_embeddings
 from .retriever import VectorRetriever
 
 

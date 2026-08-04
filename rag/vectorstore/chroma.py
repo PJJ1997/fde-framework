@@ -1,5 +1,5 @@
 """ChromaDB vector store with metadata filtering support."""
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_chroma import Chroma
