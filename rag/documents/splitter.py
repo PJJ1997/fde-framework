@@ -1,12 +1,12 @@
 """Text splitting utilities."""
 import uuid
 from typing import List, Optional
-from langchain_core.documents import Document
+from langchain_core.documents import Document as LCDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 class TextSplitter:
-    """Split documents into chunks for embedding.
+    """Split LangChain documents into chunks for embedding.
 
     Each chunk inherits parent document metadata and gets a unique chunk_id
     and chunk_index.
@@ -25,8 +25,8 @@ class TextSplitter:
             length_function=len,
         )
 
-    def split(self, documents: List[Document]) -> List[Document]:
-        """Split a list of documents into chunks with enriched metadata."""
+    def split(self, documents: List[LCDocument]) -> List[LCDocument]:
+        """Split a list of LangChain documents into chunks with enriched metadata."""
         chunks = []
         for doc in documents:
             doc_id = doc.metadata.get("doc_id", uuid.uuid4().hex[:16])
@@ -40,5 +40,5 @@ class TextSplitter:
                 # Ensure doc_id is present
                 if "doc_id" not in meta:
                     meta["doc_id"] = doc_id
-                chunks.append(Document(page_content=split.page_content, metadata=meta))
+                chunks.append(LCDocument(page_content=split.page_content, metadata=meta))
         return chunks
