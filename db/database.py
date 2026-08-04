@@ -11,7 +11,6 @@ _MESSAGE_COLUMNS = {
     "session_id",
     "message_type",
     "payload_json",
-    "schema_version",
     "created_at",
 }
 
@@ -73,7 +72,6 @@ class Database:
                             message_type IN ('user', 'assistant', 'tool')
                         ),
                         payload_json TEXT NOT NULL,
-                        schema_version INTEGER NOT NULL DEFAULT 1,
                         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
@@ -89,7 +87,6 @@ class Database:
                     CREATE TABLE IF NOT EXISTS conversation_contexts (
                         session_id TEXT PRIMARY KEY,
                         context_json TEXT NOT NULL,
-                        schema_version TEXT NOT NULL DEFAULT '1.0',
                         context_version INTEGER NOT NULL DEFAULT 1,
                         last_message_id INTEGER,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -67,7 +67,6 @@ class StoredToolCall(ProtocolModel):
 
 
 class StoredMessage(ProtocolModel):
-    schema_version: Literal[1] = 1
     message_type: Literal["user", "assistant", "tool"]
     content: list[ContentPart] = Field(default_factory=list)
     tool_calls: list[StoredToolCall] = Field(default_factory=list)

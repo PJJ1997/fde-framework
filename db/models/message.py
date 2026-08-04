@@ -17,7 +17,6 @@ class Message:
     session_id: str
     message_type: str
     payload_json: str
-    schema_version: int = 1
     id: Optional[int] = None
     created_at: Optional[datetime] = None
 
@@ -31,7 +30,6 @@ class Message:
             session_id=session_id,
             message_type=stored.message_type,
             payload_json=stored.model_dump_json(),
-            schema_version=stored.schema_version,
         )
 
     def to_stored(self) -> StoredMessage:
@@ -46,10 +44,6 @@ class Message:
             raise MessageIntegrityError(
                 "Stored message type does not match database record"
             )
-        if stored.schema_version != self.schema_version:
-            raise MessageIntegrityError(
-                "Stored message version does not match database record"
-            )
         return stored
 
     @classmethod
@@ -62,7 +56,6 @@ class Message:
             session_id=row["session_id"],
             message_type=row["message_type"],
             payload_json=row["payload_json"],
-            schema_version=row["schema_version"],
             created_at=created_at,
         )
         message.to_stored()

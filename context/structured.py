@@ -32,7 +32,6 @@ class ToolFact(BaseModel):
 class StructuredConversationContext(BaseModel):
     """Latest structured context snapshot for a conversation session."""
 
-    schema_version: str = "1.0"
     current_request: CurrentRequest = Field(default_factory=CurrentRequest)
     entities: Dict[str, Dict[str, Dict[str, Any]]] = Field(default_factory=dict)
     active_entities: Dict[str, str] = Field(default_factory=dict)

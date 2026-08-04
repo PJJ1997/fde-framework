@@ -161,7 +161,6 @@ class ContextManager:
         return self.conversation_context_repository.upsert(
             session_id=session_id,
             context_json=validated.model_dump_json(),
-            schema_version=validated.schema_version,
             last_message_id=last_message_id,
         )
 

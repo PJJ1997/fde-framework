@@ -16,8 +16,8 @@ class ConversationContextRepository:
         with closing(self.database.connect()) as connection:
             row = connection.execute(
                 """
-                SELECT session_id, context_json, schema_version,
-                       context_version, last_message_id, updated_at
+                SELECT session_id, context_json, context_version,
+                       last_message_id, updated_at
                 FROM conversation_contexts
                 WHERE session_id = ?
                 """,
@@ -29,7 +29,6 @@ class ConversationContextRepository:
         self,
         session_id: str,
         context_json: str,
-        schema_version: str,
         last_message_id: Optional[int] = None,
     ) -> int:
         with closing(self.database.connect()) as connection:
@@ -37,12 +36,11 @@ class ConversationContextRepository:
                 connection.execute(
                     """
                     INSERT INTO conversation_contexts (
-                        session_id, context_json, schema_version,
-                        context_version, last_message_id, updated_at
-                    ) VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+                        session_id, context_json, context_version,
+                        last_message_id, updated_at
+                    ) VALUES (?, ?, 1, ?, CURRENT_TIMESTAMP)
                     ON CONFLICT(session_id) DO UPDATE SET
                         context_json = excluded.context_json,
-                        schema_version = excluded.schema_version,
                         context_version =
                             conversation_contexts.context_version + 1,
                         last_message_id = COALESCE(
@@ -54,7 +52,6 @@ class ConversationContextRepository:
                     (
                         session_id,
                         context_json,
-                        schema_version,
                         last_message_id,
                     ),
                 )

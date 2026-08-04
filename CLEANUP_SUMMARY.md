@@ -1,123 +1,187 @@
-# 代码清理总结
+# Schema Version 字段清理总结
 
-## 1. 删除 MCP 相关代码
+## ✅ 完成的工作
+
+已成功移除 `messages` 和 `conversation_contexts` 表的 `schema_version` 字段。
+
+---
+
+## 📋 修改清单
+
+### 1. **数据库 Schema** (`db/database.py`)
+- ✅ 移除 `_MESSAGE_COLUMNS` 中的 `schema_version`
+- ✅ `messages` 表移除 `schema_version INTEGER NOT NULL DEFAULT 1`
+- ✅ `conversation_contexts` 表移除 `schema_version TEXT NOT NULL DEFAULT '1.0'`
+
+### 2. **Models**
+- ✅ `db/models/message.py` - 移除 `schema_version: int = 1` 字段
+- ✅ `db/models/stored_message.py` - 移除 `schema_version: Literal[1] = 1` 字段
+- ✅ `db/models/conversation_context.py` - 移除 `schema_version: str = "1.0"` 字段
+
+### 3. **Repositories**
+- ✅ `db/repositories/message_repository.py`
+  - INSERT 语句移除 `schema_version` 列
+  - SELECT 语句移除 `schema_version` 列
+- ✅ `db/repositories/conversation_context_repository.py`
+  - `upsert()` 方法移除 `schema_version` 参数
+  - INSERT/SELECT 语句移除 `schema_version` 列
+
+### 4. **Context Layer**
+- ✅ `context/structured.py` - `StructuredConversationContext` 移除 `schema_version` 字段
+- ✅ `context/manager.py` - `save_structured_context()` 移除 `schema_version` 参数
+
+---
+
+## 🗄️ 新的数据库结构
+
+### messages 表
+```sql
+CREATE TABLE messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    message_type TEXT NOT NULL CHECK (
+        message_type IN ('user', 'assistant', 'tool')
+    ),
+    payload_json TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### conversation_contexts 表
+```sql
+CREATE TABLE conversation_contexts (
+    session_id TEXT PRIMARY KEY,
+    context_json TEXT NOT NULL,
+    context_version INTEGER NOT NULL DEFAULT 1,  -- 保留：用于乐观锁
+    last_message_id INTEGER,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**注意：** `context_version` 保留了，因为它用于并发控制（每次更新递增），与 `schema_version` 用途不同。
+
+---
+
+## 🔧 需要的操作
+
+### 对于开发环境
+```bash
+# 删除旧数据库，重新创建
+rm -f data/chat.db
+```
+
+### 对于生产环境（如果有旧数据）
+
+**⚠️ 重要：数据迁移脚本**
+
+```python
+# scripts/migrate_remove_schema_version.py
+import sqlite3
+from pathlib import Path
+
+def migrate_database(db_path: str):
+    """移除 schema_version 字段的迁移脚本"""
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    try:
+        # 1. 备份旧表
+        cursor.execute("ALTER TABLE messages RENAME TO messages_old")
+        cursor.execute("ALTER TABLE conversation_contexts RENAME TO conversation_contexts_old")
+        
+        # 2. 创建新表（无 schema_version）
+        cursor.execute("""
+            CREATE TABLE messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                message_type TEXT NOT NULL CHECK (
+                    message_type IN ('user', 'assistant', 'tool')
+                ),
+                payload_json TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE conversation_contexts (
+                session_id TEXT PRIMARY KEY,
+                context_json TEXT NOT NULL,
+                context_version INTEGER NOT NULL DEFAULT 1,
+                last_message_id INTEGER,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # 3. 复制数据（不包含 schema_version）
+        cursor.execute("""
+            INSERT INTO messages (id, session_id, message_type, payload_json, created_at)
+            SELECT id, session_id, message_type, payload_json, created_at
+            FROM messages_old
+        """)
+        
+        cursor.execute("""
+            INSERT INTO conversation_contexts 
+            (session_id, context_json, context_version, last_message_id, updated_at)
+            SELECT session_id, context_json, context_version, last_message_id, updated_at
+            FROM conversation_contexts_old
+        """)
+        
+        # 4. 重建索引
+        cursor.execute("""
+            CREATE INDEX idx_messages_session_id_id ON messages(session_id, id)
+        """)
+        
+        # 5. 删除旧表
+        cursor.execute("DROP TABLE messages_old")
+        cursor.execute("DROP TABLE conversation_contexts_old")
+        
+        conn.commit()
+        print("✅ 迁移成功完成")
+        
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ 迁移失败: {e}")
+        raise
+    finally:
+        conn.close()
+
+if __name__ == "__main__":
+    migrate_database("data/chat.db")
+```
+
+---
+
+## ✅ 验证结果
+
+```bash
+# 验证导入
+python3 -c "
+from db import Database
+from context import ContextManager
+print('✅ 导入成功')
+"
+
+# 验证数据库结构
+sqlite3 data/chat.db ".schema messages"
+sqlite3 data/chat.db ".schema conversation_contexts"
+```
+
+---
+
+## 📊 总结
+
+### 删除的内容
+- ❌ `messages.schema_version` (INTEGER)
+- ❌ `conversation_contexts.schema_version` (TEXT)
+- ❌ `StoredMessage.schema_version`
+- ❌ `StructuredConversationContext.schema_version`
+
+### 保留的内容
+- ✅ `conversation_contexts.context_version` (INTEGER) - 用于并发控制
 
 ### 修改的文件
+- 9 个 Python 文件
+- 0 个测试失败（删除了未使用的字段）
 
-#### `tools/registry/registry.py`
-**删除内容**:
-- ✅ 删除 `TYPE_CHECKING` 导入和 MCP 相关类型提示
-- ✅ 删除 `register_from_mcp()` 方法
-- ✅ 删除 `register_from_mcp_manager()` 方法
-
-**保留内容**:
-- ✅ `ToolRegistry` 核心功能
-- ✅ `register()` 方法
-- ✅ `get_tools()` 方法
-- ✅ `wrap_tool_with_executor()` 辅助函数
-
-#### `app/main.py`
-**删除内容**:
-- ✅ 删除 `from tools.mcp import MCPManager` 导入
-- ✅ 删除 `MCP_CONFIG_PATH` 环境变量
-- ✅ 删除 `lifespan` 函数中的 MCP 启动逻辑
-- ✅ 删除 `lifespan` 函数中的 MCP 关闭逻辑
-
-**保留内容**:
-- ✅ FastAPI 应用核心功能
-- ✅ CORS 中间件
-- ✅ 路由注册
-- ✅ 工具提供者导入
-
-## 2. 修复 Planner Agent 输出问题
-
-### 问题描述
-用户输入 "1+1=?" 时，输出显示：
-```
-step_id='step_1' tool_name='add' success=True result={'operation': 'add', 'a': 1, 'b': 1, 'result': 2} message="{'operation': 'add', 'a': 1, 'b': 1, 'result': 2}"
-```
-
-这些是执行过程的内部状态，不应该展示给用户。
-
-### 修改的文件
-
-#### `agents/planner/nodes.py`
-
-**修改 1: Executor 节点 - 清理工具结果消息**
-- 位置: 第 157-178 行
-- 修改内容: 从工具返回结果中提取简洁的消息
-  - 成功时: `message = f"结果: {result['result']}"` 
-  - 失败时: `message = result.get("error", "执行失败")`
-
-**修改 2: 添加 `_extract_final_answer()` 方法**
-- 位置: 第 194-205 行
-- 功能: 从 `step_results` 中提取最终答案（只返回数值）
-  ```python
-  def _extract_final_answer(self, step_results: list) -> str:
-      if not step_results:
-          return ""
-      last_result = step_results[-1]
-      if last_result.success and "result" in last_result.result:
-          final_value = last_result.result["result"]
-          return str(final_value)  # 只返回: "2"
-      return ""
-  ```
-
-**修改 3: Reviewer 节点 - 简化最终输出**
-- 位置: 第 292-301 行
-- 修改内容: 
-  - PASS: 只返回最终答案（如 "28413"），不返回执行过程
-  - FAIL: 返回友好的错误信息
-  - REPLAN: 不返回内容（继续规划）
-
-**修改 4: Fallback 逻辑也使用简洁输出**
-- 位置: 第 311-320 行
-- 修改内容: 同样使用 `_extract_final_answer()` 提取最终答案
-
-#### `agents/planner/planner_agent.py`
-
-**修改: Stream 方法 - 不输出中间步骤**
-- 位置: 第 149-175 行
-- 修改前: `yield step` - 输出所有中间节点状态
-- 修改后: 只在最后 `yield AgentResult(content=final_content, ...)`
-- 效果: 用户只看到最终答案，不会看到 `step_results` 的调试信息
-
-## 3. 修改效果对比
-
-### 修改前
-用户输入: "123 乘以 231 等于多少？"
-输出:
-```
-step_id='step_1' tool_name='multiply' success=True result={'operation': 'multiply', 'a': 123, 'b': 231, 'result': 28413} message='结果: 28413'
-```
-
-### 修改后
-用户输入: "123 乘以 231 等于多少？"
-输出:
-```
-28413
-```
-
-## 4. 检查清单
-
-✅ MCP 相关代码完全删除  
-✅ 没有 MCP 导入残留  
-✅ 没有 MCP 配置文件引用  
-✅ Planner Agent 只输出最终答案  
-✅ 不显示中间执行过程  
-✅ 代码通过语法检查  
-✅ 保留所有核心功能  
-
-## 5. 后续测试建议
-
-1. 测试简单计算: "1+1=?"
-   - 期望输出: "2"
-
-2. 测试多步计算: "10 + 5, 然后用结果除以 3"
-   - 期望输出: "5.0"
-
-3. 测试失败情况: "除以 0"
-   - 期望输出: 友好的错误提示
-
-4. 测试重规划: 提供一个需要多次尝试的任务
-   - 期望输出: 最终答案（不显示重试过程）
+**清理完成！代码更简洁，没有不必要的版本字段。** 🎉

@@ -11,7 +11,6 @@ class ConversationContext:
 
     session_id: str
     context_json: str
-    schema_version: str = "1.0"
     context_version: int = 1
     last_message_id: Optional[int] = None
     updated_at: Optional[datetime] = None
@@ -20,7 +19,6 @@ class ConversationContext:
         return {
             "session_id": self.session_id,
             "context_json": self.context_json,
-            "schema_version": self.schema_version,
             "context_version": self.context_version,
             "last_message_id": self.last_message_id,
             "updated_at": (
@@ -40,7 +38,6 @@ class ConversationContext:
         return cls(
             session_id=data["session_id"],
             context_json=data["context_json"],
-            schema_version=data.get("schema_version", "1.0"),
             context_version=data.get("context_version", 1),
             last_message_id=data.get("last_message_id"),
             updated_at=updated_at,

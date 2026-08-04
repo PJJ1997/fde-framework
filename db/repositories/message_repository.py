@@ -19,15 +19,13 @@ class MessageRepository:
                 cursor = connection.execute(
                     """
                     INSERT INTO messages (
-                        session_id, message_type, payload_json,
-                        schema_version, created_at
-                    ) VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+                        session_id, message_type, payload_json, created_at
+                    ) VALUES (?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
                     """,
                     (
                         message.session_id,
                         message.message_type,
                         message.payload_json,
-                        message.schema_version,
                         message.created_at,
                     ),
                 )
@@ -44,8 +42,7 @@ class MessageRepository:
 
         order = "DESC" if newest_first else "ASC"
         query = f"""
-            SELECT id, session_id, message_type, payload_json,
-                   schema_version, created_at
+            SELECT id, session_id, message_type, payload_json, created_at
             FROM messages
             WHERE session_id = ?
             ORDER BY id {order}
